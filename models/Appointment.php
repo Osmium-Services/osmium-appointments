@@ -133,8 +133,8 @@ class Appointment extends Model
     {
         $available = [];
         foreach ($resources as $resource) {
-            $onBreak = AppointmentRules::onBreak($resource, $startsAt, $endsAt);
-            $confirmed = $onBreak ? true : $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt) !== null;
+            $unavailable = AppointmentRules::unavailableReason($resource, $startsAt, $endsAt) !== null;
+            $confirmed = $unavailable ? true : $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt) !== null;
             if (!$confirmed) $available[] = $resource;
         }
 

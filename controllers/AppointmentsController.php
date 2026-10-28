@@ -23,6 +23,7 @@ use Osmium\Services\OsmiumAppointments\Models\AppointmentType;
 class AppointmentsController extends AdminController
 {
     private const RECORD_TYPE = 'appointment';
+    private const WEEKDAY_NAMES = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
 
     // =========================================================================
     // Public Actions
@@ -60,6 +61,12 @@ class AppointmentsController extends AdminController
         $this->data['admin']['days'] = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
 
         $this->setView('appointments/settings.phtml');
+    }
+
+    /** @return array<int, array{open: string, close: string}|null> the opening hours from Company > Location, by weekday */
+    private function businessHours(): array
+    {
+        return AppointmentConfig::hoursFor(companyHours: $this->osmium->config->company->openingHours ?? null, breaks: []);
     }
 
     private function loadRules(): void
@@ -235,10 +242,12 @@ class AppointmentsController extends AdminController
         $endsAt = $start->modify('+' . (int) $type['duration_minutes'] . ' minutes')->format('Y-m-d H:i:s');
         $resourceValue = $hasResource ? $resourceId : null;
 
+        $timeChanged = $startsAt !== $appointment['starts_at'] || $endsAt !== $appointment['ends_at'] || $resourceValue !== ($appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null);
+        if ($timeChanged) $this->refuseOutsideOpeningHours(start: $start, minutes: (int) $type['duration_minutes']);
+
         $isConfirmed = $appointment['status'] === 'confirmed';
         if ($isConfirmed) $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt);
 
-        $timeChanged = $startsAt !== $appointment['starts_at'] || $endsAt !== $appointment['ends_at'] || $resourceValue !== ($appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null);
         $sequence = (int) $appointment['ics_sequence'] + ($isConfirmed && $timeChanged ? 1 : 0);
         $notes = \trim((string) ($input['admin_notes'] ?? ''));
 
@@ -249,6 +258,12 @@ class AppointmentsController extends AdminController
         if ($tellCustomer) (new AppointmentNotifier($this->osmium))->changed($model->get($id));
 
         return ['success' => true, 'id' => $id];
+    }
+
+    /** Staff move appointments at will, but still not outside the opening hours (no notice or how-far-ahead limit applies to them) */
+    private function refuseOutsideOpeningHours(\DateTimeImmutable $start, int $minutes): void
+    {
+        AppointmentRules::staffSlot(config: AppointmentConfig::get(companyHours: $this->osmium->config->company->openingHours ?? null), start: $start, durationMinutes: $minutes);
     }
 
     private function deleteAppointment(int $id): array
@@ -320,8 +335,8 @@ class AppointmentsController extends AdminController
     private function refuseIfClash(Appointment $model, array $appointment, ?int $resourceId, string $startsAt, string $endsAt): void
     {
         $person = $resourceId !== null ? (new AppointmentResource($this->osmium->dataSource))->get($resourceId) : null;
-        $onBreak = AppointmentRules::onBreak($person, $startsAt, $endsAt);
-        if ($onBreak) throw new \InvalidArgumentException($person['name'] . ' is on their break then (' . $person['break_start'] . ' to ' . $person['break_end'] . '). Change the time or person first.');
+        $reason = AppointmentRules::unavailableReason($person, $startsAt, $endsAt);
+        if ($reason !== null) throw new \InvalidArgumentException($reason . '. Change the time or person first.');
 
         $clash = $model->findOverlap(excludeId: (int) $appointment['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt);
         if ($clash === null) return;
@@ -378,6 +393,64 @@ class AppointmentsController extends AdminController
         return ['success' => true, 'id' => $id];
     }
 
+    /** @return ?string JSON of the regular hours {weekday: {off} or {start, end}}, null when everything follows the business hours */
+    private function validWeekly(mixed $rows): ?string
+    {
+        $weekly = [];
+        for ($day = 1; $day <= 7; $day++) {
+            $row = \is_array($rows) ? ($rows[$day] ?? $rows[(string) $day] ?? []) : [];
+            if (!empty($row['off'])) {
+                $weekly[$day] = ['off' => true];
+                continue;
+            }
+
+            // Only ever narrower than the opening hours in Company > Location; a side left on Opening or Closing means that time
+            $open = $this->businessHours()[$day] ?? null;
+            $start = (string) ($row['start'] ?? '');
+            $end = (string) ($row['end'] ?? '');
+            $oneSideSet = ($start !== '') !== ($end !== '');
+            if ($oneSideSet && $open !== null) {
+                $start = $start !== '' ? $start : $open['open'];
+                $end = $end !== '' ? $end : $open['close'];
+            }
+
+            $pair = AppointmentConfig::validPair(row: ['start' => $start, 'end' => $end], message: 'Regular hours need a start time earlier than the end time');
+            if ($pair === null) continue;
+
+            $dayName = self::WEEKDAY_NAMES[$day];
+            if ($open === null) throw new \InvalidArgumentException("We are closed on {$dayName}s, so there are no hours to set");
+
+            $outside = $pair['start'] < $open['open'] || $pair['end'] > $open['close'];
+            if ($outside) throw new \InvalidArgumentException("Regular hours on {$dayName}s must be within the opening hours ({$open['open']} to {$open['close']})");
+
+            $weekly[$day] = ['start' => $pair['start'], 'end' => $pair['end']];
+        }
+
+        return $weekly === [] ? null : \json_encode($weekly);
+    }
+
+    /** @return ?string JSON list of {from, to, start, end, reason}, null when there is none */
+    private function validTimeOff(mixed $rows): ?string
+    {
+        $list = [];
+        $rows = \is_array($rows) ? \array_slice($rows, 0, 100) : [];
+        foreach ($rows as $row) {
+            $from = \trim((string) ($row['from'] ?? ''));
+            $to = \trim((string) ($row['to'] ?? '')) ?: $from;
+            $empty = $from === '' && \trim((string) ($row['to'] ?? '')) === '';
+            if ($empty) continue;
+
+            $datesBad = \DateTimeImmutable::createFromFormat('!Y-m-d', $from) === false || \DateTimeImmutable::createFromFormat('!Y-m-d', $to) === false || $to < $from;
+            if ($datesBad) throw new \InvalidArgumentException('Each time off needs a first day, and a last day that is not earlier');
+
+            $pair = AppointmentConfig::validPair(row: ['start' => (string) ($row['start'] ?? ''), 'end' => (string) ($row['end'] ?? '')], message: 'Time off hours need a start time earlier than the end time');
+            $reason = \mb_substr(\trim((string) ($row['reason'] ?? '')), 0, 100);
+            $list[] = ['from' => $from, 'to' => $to, 'start' => $pair['start'] ?? '', 'end' => $pair['end'] ?? '', 'reason' => $reason];
+        }
+
+        return $list === [] ? null : \json_encode($list);
+    }
+
     private function saveResource(array $input): array
     {
         $name = \trim((string) ($input['name'] ?? ''));
@@ -385,6 +458,8 @@ class AppointmentsController extends AdminController
         if ($nameBad) throw new \InvalidArgumentException('Name is required and limited to 100 characters');
 
         $break = AppointmentConfig::validPair(row: ['start' => (string) ($input['break_start'] ?? ''), 'end' => (string) ($input['break_end'] ?? '')], message: 'A break needs a start time earlier than its end time');
+        $weekly = $this->validWeekly($input['weekly'] ?? []);
+        $timeOff = $this->validTimeOff($input['time_off'] ?? []);
         $model = new AppointmentResource($this->osmium->dataSource);
         $id = (int) ($input['id'] ?? 0);
         $enabled = !empty($input['enabled']);
@@ -393,8 +468,8 @@ class AppointmentsController extends AdminController
         $isNew = $id === 0;
         if (!$isNew && $model->get($id) === null) throw new \InvalidArgumentException('Not found');
 
-        $savedId = $isNew ? $model->create(name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null) : $id;
-        if (!$isNew) $model->update(id: $id, name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null);
+        $savedId = $isNew ? $model->create(name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null, weekly: $weekly, timeOff: $timeOff) : $id;
+        if (!$isNew) $model->update(id: $id, name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null, weekly: $weekly, timeOff: $timeOff);
         $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' appointment resource: ' . $name, recordType: 'appointment_resource', recordId: $savedId);
 
         return ['success' => true, 'id' => $savedId];
@@ -508,6 +583,9 @@ class AppointmentsController extends AdminController
             'sortOrder' => (int) $row['sort_order'],
             'breakStart' => $row['break_start'] ?? '',
             'breakEnd' => $row['break_end'] ?? '',
+            // Kept as the stored JSON text: the list prints every field as text; the page script parses them
+            'weekly' => (string) ($row['weekly'] ?? ''),
+            'timeOff' => (string) ($row['time_off'] ?? ''),
             'breakText' => ($row['break_start'] ?? '') !== '' ? $row['break_start'] . ' to ' . $row['break_end'] : '',
             'appointmentCount' => (int) $row['appointment_count'],
             'enabledBadge' => $row['enabled'] ? '<span class="badge bg-label-success">On</span>' : '<span class="badge bg-label-secondary">Off</span>',

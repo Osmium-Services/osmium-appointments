@@ -126,7 +126,7 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 </div>
 
 <div class="modal fade" id="resourceModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form id="resourceForm">
                 <div class="modal-header">
@@ -156,9 +156,16 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
                         </div>
                     </div>
                     <div class="form-text mb-3">Nothing can be booked with them during their break. Stagger breaks so the shop stays open.</div>
+                    <h6 class="mt-4">Regular hours</h6>
+                    <div class="form-text mb-2">Leave a day empty to follow the business hours. Set hours only to narrow them (for example 09:00 to 15:00), or tick Off for a day they never work.</div>
+                    <div id="resourceWeekly" class="mb-3"></div>
+                    <h6 class="mt-4">Time off</h6>
+                    <div class="form-text mb-2">Holidays, sickness or anything temporary. Leave the times empty for whole days. Bookings already made are not moved; they show on the Schedule for you to deal with.</div>
+                    <div id="resourceTimeOff" class="mb-2"></div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mb-3" id="resourceAddTimeOff"><i class="bx bx-plus me-1"></i>Add time off</button>
                     <div class="form-check form-switch mb-3">
                         <input class="form-check-input" type="checkbox" id="resourceEnabled" checked>
-                        <label class="form-check-label" for="resourceEnabled">Customers can choose this</label>
+                        <label class="form-check-label" for="resourceEnabled">Customers can choose <span id="resourceChooseName">this</span></label>
                     </div>
                     <div id="resourceResult" class="alert d-none"></div>
                 </div>
@@ -174,6 +181,7 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 <script nonce="<?= $cspNonce ?? '' ?>">
     window.OsmiumAppointmentsConfig = {
         basePath: adminBasePath,
+        hours: <?= \json_encode($admin['companyHours'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         types: <?= \json_encode(\array_column($admin['types'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         resources: <?= \json_encode(\array_column($admin['resources'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
     };

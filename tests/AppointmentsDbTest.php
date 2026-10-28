@@ -131,6 +131,31 @@ class AppointmentsDbTest extends DatabaseTestCase
         $this->assertSame($amy, (int) $appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00')['id']);
     }
 
+    public function test_someone_off_or_outside_their_regular_hours_is_never_free_or_suggested(): void
+    {
+        $resources = new AppointmentResource($this->db);
+        $appointments = new Appointment($this->db);
+        $zoe = $resources->create(name: 'zzZoe', enabled: true, sortOrder: 1, weekly: \json_encode([4 => ['start' => '09:00', 'end' => '15:00']]), timeOff: \json_encode([['from' => '2026-11-05', 'to' => '2026-11-05', 'start' => '13:00', 'end' => '17:00', 'reason' => 'Unwell']]));
+        $max = $resources->create(name: 'zzMax', enabled: true, sortOrder: 2);
+        $people = [$resources->get($zoe), $resources->get($max)];
+        $this->assertSame('zzZoe', $people[0]['name']);
+
+        // Thursday 5 Nov 2026: Zoe works until 15:00 but is off from 13:00 (part-day time off)
+        $this->assertSame($zoe, (int) $appointments->findFreeResource($people, '2026-11-05 10:00:00', '2026-11-05 11:00:00')['id']);
+        $this->assertSame($max, (int) $appointments->findFreeResource($people, '2026-11-05 13:00:00', '2026-11-05 14:00:00')['id']);
+        // Thursday 12 Nov: no time off, but nothing after her regular 15:00 finish
+        $this->assertSame($max, (int) $appointments->findFreeResource($people, '2026-11-12 15:00:00', '2026-11-12 16:00:00')['id']);
+        // Both unavailable: nobody
+        $resources->update(id: $max, name: 'zzMax', enabled: true, sortOrder: 2, timeOff: \json_encode([['from' => '2026-11-05', 'to' => '2026-11-05', 'start' => '', 'end' => '', 'reason' => '']]));
+        $people = [$resources->get($zoe), $resources->get($max)];
+        $this->assertNull($appointments->findFreeResource($people, '2026-11-05 13:00:00', '2026-11-05 14:00:00'));
+
+        $alternatives = new AppointmentAlternatives($appointments, AppointmentConfig::defaults() + ['hours' => []], new \DateTimeImmutable('2026-11-02 08:00'));
+        $this->assertFalse($alternatives->isFree($people[0], '2026-11-05 13:00:00', '2026-11-05 14:00:00'));
+        $this->assertFalse($alternatives->isFree($people[1], '2026-11-05 09:00:00', '2026-11-05 10:00:00'));
+        $this->assertTrue($alternatives->isFree($people[1], '2026-11-06 09:00:00', '2026-11-06 10:00:00'));
+    }
+
     public function test_a_refusal_suggests_someone_else_and_nearby_times(): void
     {
         $appointments = new Appointment($this->db);

@@ -20,14 +20,14 @@ class AppointmentAlternatives
     }
 
     /**
-     * Free means not on their break and no confirmed appointment overlapping. A null lane is the business as a whole.
+     * Free means working then (no time off, within their regular hours, not on their break) and no confirmed appointment overlapping. A null lane is the business as a whole.
      *
      * @param array<string, mixed>|null $lane a person row, or null
      */
     public function isFree(?array $lane, string $startsAt, string $endsAt): bool
     {
-        $onBreak = AppointmentRules::onBreak($lane, $startsAt, $endsAt);
-        if ($onBreak) return false;
+        $unavailable = AppointmentRules::unavailableReason($lane, $startsAt, $endsAt) !== null;
+        if ($unavailable) return false;
 
         $laneId = $lane !== null ? (int) $lane['id'] : null;
 

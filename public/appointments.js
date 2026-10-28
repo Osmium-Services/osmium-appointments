@@ -2,6 +2,22 @@
     'use strict';
 
     const config = window.OsmiumAppointmentsConfig || {};
+
+    // Regular hours and time off arrive as the stored JSON text; the rest of this script uses them as data
+    function parseStored(text, fallback) {
+        try {
+            const value = JSON.parse(text);
+
+            return value && typeof value === 'object' ? value : fallback;
+        } catch (error) {
+            return fallback;
+        }
+    }
+
+    Object.values(config.resources || {}).forEach(function (person) {
+        person.weekly = parseStored(person.weekly, {});
+        person.timeOff = parseStored(person.timeOff, []);
+    });
     const actionUrl = config.basePath + 'appointments/action/';
 
     function byId(id) {
@@ -177,8 +193,120 @@
         openModal('typeModal');
     }
 
+    const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    function field(type, className, value, width) {
+        const input = document.createElement('input');
+        input.type = type;
+        input.className = 'form-control form-control-sm ' + className;
+        input.value = value || '';
+        if (width) input.style.width = width;
+
+        return input;
+    }
+
+    // A dropdown of the times from opening to closing (nothing outside can be picked); the first choice is "no limit"
+    function timeSelect(className, value, open, blank) {
+        const select = document.createElement('select');
+        select.className = 'form-select form-select-sm ' + className;
+        select.style.width = '7.5rem';
+        select.appendChild(new Option(blank, ''));
+        if (!open) {
+            select.disabled = true;
+
+            return select;
+        }
+
+        const stepMinutes = 15;
+        for (let at = toMinutes(open.open); at <= toMinutes(open.close); at += stepMinutes) {
+            select.appendChild(new Option(clock(at), clock(at)));
+        }
+        select.value = value || '';
+
+        return select;
+    }
+
+    function renderWeekly(weekly) {
+        const box = byId('resourceWeekly');
+        box.textContent = '';
+        WEEKDAYS.forEach(function (name, index) {
+            const day = weekly[index + 1] || {};
+            const row = document.createElement('div');
+            row.className = 'd-flex align-items-center gap-2 mb-1 weekly-row';
+            row.dataset.day = String(index + 1);
+
+            const label = document.createElement('span');
+            label.style.width = '6rem';
+            label.textContent = name;
+            // Only the business's own opening hours can be chosen; a closed day cannot be worked
+            const open = (config.hours || {})[index + 1] || null;
+            const startField = timeSelect('weekly-start', day.start, open, 'Opening');
+            const endField = timeSelect('weekly-end', day.end, open, 'Closing');
+            const off = document.createElement('input');
+            off.type = 'checkbox';
+            off.className = 'form-check-input mt-0 weekly-off';
+            off.checked = Boolean(day.off);
+            off.disabled = !open;
+            const offLabel = document.createElement('span');
+            offLabel.className = 'text-muted me-3';
+            offLabel.textContent = open ? 'Off (' + open.open + ' to ' + open.close + ' open)' : 'Closed';
+
+            row.append(label, startField, document.createTextNode('to'), endField, off, offLabel);
+            box.appendChild(row);
+        });
+    }
+
+    function addTimeOffRow(entry) {
+        const row = document.createElement('div');
+        row.className = 'd-flex flex-wrap align-items-center gap-2 mb-2 timeoff-row';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-sm btn-outline-danger';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', function () { row.remove(); });
+        const reason = field('text', 'timeoff-reason', entry.reason, '11rem');
+        reason.placeholder = 'Reason (optional)';
+        reason.maxLength = 100;
+
+        row.append(field('date', 'timeoff-from', entry.from, '10rem'), document.createTextNode('to'), field('date', 'timeoff-to', entry.to, '10rem'), field('time', 'timeoff-start', entry.start, '7.5rem'), document.createTextNode('-'), field('time', 'timeoff-end', entry.end, '7.5rem'), reason, remove);
+        byId('resourceTimeOff').appendChild(row);
+    }
+
+    function collectWeekly() {
+        const weekly = {};
+        document.querySelectorAll('#resourceWeekly .weekly-row').forEach(function (row) {
+            weekly[row.dataset.day] = {
+                off: row.querySelector('.weekly-off').checked,
+                start: row.querySelector('.weekly-start').value,
+                end: row.querySelector('.weekly-end').value
+            };
+        });
+
+        return weekly;
+    }
+
+    function collectTimeOff() {
+        return Array.from(document.querySelectorAll('#resourceTimeOff .timeoff-row')).map(function (row) {
+            return {
+                from: row.querySelector('.timeoff-from').value,
+                to: row.querySelector('.timeoff-to').value,
+                start: row.querySelector('.timeoff-start').value,
+                end: row.querySelector('.timeoff-end').value,
+                reason: row.querySelector('.timeoff-reason').value
+            };
+        });
+    }
+
+    // The switch names who it is for ("Customers can choose Amy"), or says "this" until a name is typed
+    function showChooseName() {
+        byId('resourceChooseName').textContent = byId('resourceName').value.trim() || 'this';
+    }
+
     function openResource(resource) {
         clear('resourceResult');
+        renderWeekly(resource ? resource.weekly : {});
+        byId('resourceTimeOff').textContent = '';
+        (resource ? resource.timeOff : []).forEach(addTimeOffRow);
         const isEdit = Boolean(resource);
         byId('resourceModalTitle').textContent = isEdit ? 'Edit' : 'Add someone or something';
         byId('resourceId').value = isEdit ? resource.id : '';
@@ -187,6 +315,7 @@
         byId('resourceBreakStart').value = isEdit ? resource.breakStart : '';
         byId('resourceBreakEnd').value = isEdit ? resource.breakEnd : '';
         byId('resourceEnabled').checked = isEdit ? resource.enabled : true;
+        showChooseName();
         openModal('resourceModal');
     }
 
@@ -287,13 +416,14 @@
                     date: isoDate(day),
                     person: person ? String(person.id) : null,
                     breakStart: person ? person.breakStart : '',
-                    breakEnd: person ? person.breakEnd : ''
+                    breakEnd: person ? person.breakEnd : '',
+                    off: offRanges(person, isoDate(day))
                 };
             });
         }
 
         const columns = people.map(function (person) {
-            return { title: person.name, date: dateText, person: String(person.id), breakStart: person.breakStart, breakEnd: person.breakEnd };
+            return { title: person.name, date: dateText, person: String(person.id), breakStart: person.breakStart, breakEnd: person.breakEnd, off: offRanges(person, dateText) };
         });
         const unassigned = activeOn(dateText).some(function (item) { return item.resourceId === ''; });
         if (unassigned || columns.length === 0) {
@@ -303,15 +433,50 @@
         return columns;
     }
 
+    /**
+     * The stretches of this date (as minutes from midnight) the person does not work: time off, a day or hours they
+     * do not regularly work. A day with no business hours is already shaded as closed.
+     */
+    function offRanges(person, dateText) {
+        if (!person) return [];
+
+        const ranges = [];
+        const regular = (person.weekly || {})[weekdayOf(new Date(dateText + 'T00:00:00'))];
+        if (regular && regular.off) ranges.push([0, 1440]);
+        if (regular && !regular.off && regular.start && regular.end) {
+            ranges.push([0, toMinutes(regular.start)], [toMinutes(regular.end), 1440]);
+        }
+
+        (person.timeOff || []).forEach(function (off) {
+            const covers = dateText >= off.from && dateText <= (off.to || off.from);
+            if (!covers) return;
+            ranges.push(off.start && off.end ? [toMinutes(off.start), toMinutes(off.end)] : [0, 1440]);
+        });
+
+        return ranges;
+    }
+
     function itemsFor(column) {
         return activeOn(column.date).filter(function (item) {
             return column.person === null || String(item.resourceId) === column.person;
         });
     }
 
+    // The heading says exactly what is on screen: "Wednesday 4 November 2026", or the week's first and last day
+    function scheduleHeading(columns) {
+        const plain = function (date, options) { return date.toLocaleDateString('en-GB', options).replace(',', ''); };
+        const first = new Date(columns[0].date + 'T00:00:00');
+        if (scheduleState.mode !== 'week') return plain(first, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+        const last = new Date(columns[columns.length - 1].date + 'T00:00:00');
+
+        return plain(first, { weekday: 'long', day: 'numeric', month: 'long' }) + ' to ' + plain(last, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
     function renderSchedule(dateText) {
         const grid = byId('scheduleGrid');
         const columns = scheduleColumns(dateText);
+        byId('scheduleTitle').textContent = scheduleHeading(columns);
         grid.textContent = '';
 
         columns.forEach(function (column) {
@@ -367,6 +532,7 @@
                 shade(lane, 'sched-closed', toMinutes(column.hours.close), end, origin);
                 if (column.hours.breakStart) shade(lane, 'sched-break', toMinutes(column.hours.breakStart), toMinutes(column.hours.breakEnd), origin);
             }
+            if (column.hours !== null) (column.off || []).forEach(function (range) { shade(lane, 'sched-off', Math.max(range[0], origin), Math.min(range[1], end), origin); });
             if (column.breakStart && column.hours !== null) shade(lane, 'sched-break', toMinutes(column.breakStart), toMinutes(column.breakEnd), origin);
 
             column.items.forEach(function (item) {
@@ -517,9 +683,14 @@
                 sort_order: byId('resourceOrder').value,
                 break_start: byId('resourceBreakStart').value,
                 break_end: byId('resourceBreakEnd').value,
+                weekly: collectWeekly(),
+                time_off: collectTimeOff(),
                 enabled: byId('resourceEnabled').checked
             });
         });
+
+        on('resourceName', 'input', showChooseName);
+        on('resourceAddTimeOff', 'click', function () { addTimeOffRow({}); });
 
         on('settingsForm', 'submit', function (e) {
             submit(e, 'settingsResult', settingsPayload());

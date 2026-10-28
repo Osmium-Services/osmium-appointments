@@ -19,7 +19,7 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 
 <div class="card mb-4" id="schedule">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <h5 class="mb-0">Schedule</h5>
+        <h5 class="mb-0" id="scheduleTitle">Schedule</h5>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="btn-group btn-group-sm" role="group" aria-label="Schedule view">
                 <button type="button" class="btn btn-outline-secondary active" id="scheduleModeDay">Day</button>
@@ -39,6 +39,7 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
             <span><span class="sched-key sched-confirmed"></span> Confirmed</span>
             <span><span class="sched-key sched-break"></span> Break</span>
             <span><span class="sched-key sched-closed"></span> Closed</span>
+            <span><span class="sched-key sched-off"></span> Not working</span>
         </div>
         <div id="scheduleGrid" class="sched-scroll"></div>
     </div>
@@ -53,13 +54,14 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
     .sched-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--bs-border-color, #ddd); opacity: .5; }
     .sched-shade { position: absolute; left: 0; right: 0; }
     .sched-closed { background: repeating-linear-gradient(135deg, rgba(128,128,128,.28), rgba(128,128,128,.28) 4px, rgba(128,128,128,.12) 4px, rgba(128,128,128,.12) 8px); }
+    .sched-off { background: repeating-linear-gradient(45deg, rgba(220,53,69,.30), rgba(220,53,69,.30) 4px, rgba(220,53,69,.12) 4px, rgba(220,53,69,.12) 8px); }
     .sched-break { background: rgba(13, 110, 253, .22); }
     .sched-appt { position: absolute; left: 3px; right: 3px; border-radius: .35rem; padding: .15rem .35rem; font-size: .78rem; line-height: 1.2; overflow: hidden; cursor: pointer; border: 1px solid transparent; text-align: left; z-index: 2; color: #fff; }
     .sched-appt small { display: block; opacity: .9; }
     .sched-requested { background: #b8860b; border-color: #e0a800; }
     .sched-confirmed { background: #1f8f4e; border-color: #28a745; }
     .sched-key { display: inline-block; width: .9rem; height: .9rem; border-radius: .2rem; vertical-align: -.15rem; margin-right: .25rem; }
-    .sched-key.sched-closed, .sched-key.sched-break { border: 1px solid var(--bs-border-color, #ccc); }
+    .sched-key.sched-closed, .sched-key.sched-break, .sched-key.sched-off { border: 1px solid var(--bs-border-color, #ccc); }
     .sched-note { padding: 1rem; color: var(--bs-secondary-color, #888); }
 </style>
 

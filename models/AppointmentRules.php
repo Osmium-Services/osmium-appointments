@@ -53,6 +53,21 @@ class AppointmentRules
     }
 
     /**
+     * The same checks for an appointment made or moved by staff: opening hours, closed days, breaks and the time
+     * step, but no minimum notice, how-far-ahead limit or "not in the past" rule (they may enter anything the shop can do).
+     *
+     * @param array{hours: array<int, array{open: string, close: string}|null>, stepMinutes: int} $config
+     * @return array{startsAt: string, endsAt: string}
+     * @throws \InvalidArgumentException
+     */
+    public static function staffSlot(array $config, \DateTimeImmutable $start, int $durationMinutes): array
+    {
+        $relaxed = ['minNoticeHours' => 0, 'maxDaysAhead' => 100000] + $config;
+
+        return self::slot(config: $relaxed, date: $start->format('Y-m-d'), time: $start->format('H:i'), durationMinutes: $durationMinutes, now: new \DateTimeImmutable('2000-01-01'));
+    }
+
+    /**
      * Whether an appointment would run into this person's daily break (break_start and break_end as H:i; none = never)
      *
      * @param array{break_start?: ?string, break_end?: ?string}|null $resource
@@ -65,6 +80,64 @@ class AppointmentRules
         if (!$hasBreak) return false;
 
         return \substr($startsAt, 11, 5) < $breakEnd && \substr($endsAt, 11, 5) > $breakStart;
+    }
+
+    /**
+     * Why this person cannot take an appointment at this time, or null when they can: time off (holiday, sickness),
+     * a day or hours they do not regularly work, or their daily break. weekly and time_off are JSON as stored.
+     *
+     * @param array<string, mixed>|null $resource
+     */
+    public static function unavailableReason(?array $resource, string $startsAt, string $endsAt): ?string
+    {
+        if ($resource === null) return null;
+
+        $name = (string) ($resource['name'] ?? 'They');
+        $date = \substr($startsAt, 0, 10);
+        $from = \substr($startsAt, 11, 5);
+        $to = \substr($endsAt, 11, 5);
+
+        foreach (self::decode($resource['time_off'] ?? null) as $off) {
+            $started = ($off['from'] ?? '') !== '' && $date >= $off['from'];
+            $notOver = ($off['to'] ?? '') === '' || $date <= $off['to'];
+            if (!$started || !$notOver) continue;
+
+            $wholeDay = ($off['start'] ?? '') === '' || ($off['end'] ?? '') === '';
+            $inWindow = !$wholeDay && $from < $off['end'] && $to > $off['start'];
+            if (!$wholeDay && !$inWindow) continue;
+
+            $label = ($off['reason'] ?? '') !== '' ? ' (' . $off['reason'] . ')' : '';
+            $span = $wholeDay ? '' : ' from ' . $off['start'] . ' to ' . $off['end'];
+
+            return $name . ' is off on ' . (new \DateTimeImmutable($date))->format('D j M') . $span . $label;
+        }
+
+        $weekday = (int) (new \DateTimeImmutable($date))->format('N');
+        $regular = self::decode($resource['weekly'] ?? null)[$weekday] ?? null;
+        if (\is_array($regular)) {
+            $dayName = (new \DateTimeImmutable($date))->format('l');
+            if (!empty($regular['off'])) return $name . ' does not work on ' . $dayName . 's';
+
+            $hasHours = ($regular['start'] ?? '') !== '' && ($regular['end'] ?? '') !== '';
+            if ($hasHours && ($from < $regular['start'] || $to > $regular['end'])) return $name . ' works ' . $regular['start'] . ' to ' . $regular['end'] . ' on ' . $dayName . 's';
+        }
+
+        $onBreak = self::onBreak($resource, $startsAt, $endsAt);
+        if ($onBreak) return $name . ' is on their break then (' . $resource['break_start'] . ' to ' . $resource['break_end'] . ')';
+
+        return null;
+    }
+
+    /** @return array<int|string, mixed> the stored JSON as an array, empty when there is none or it is not valid */
+    public static function decode(mixed $stored): array
+    {
+        if (\is_array($stored)) return $stored;
+        $empty = !\is_string($stored) || $stored === '';
+        if ($empty) return [];
+
+        $decoded = \json_decode($stored, true);
+
+        return \is_array($decoded) ? $decoded : [];
     }
 
     /** Two appointments overlap when each starts before the other ends; touching ends are fine */

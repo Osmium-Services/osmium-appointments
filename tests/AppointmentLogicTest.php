@@ -139,6 +139,71 @@ class AppointmentLogicTest extends TestCase
         $this->assertFalse(AppointmentRules::onBreak(null, '2026-11-09 12:30:00', '2026-11-09 13:30:00'));
     }
 
+    public function test_time_off_regular_hours_and_breaks_make_a_person_unavailable(): void
+    {
+        $ella = [
+            'name' => 'Ella',
+            'break_start' => '12:00',
+            'break_end' => '13:00',
+            'weekly' => \json_encode([1 => ['start' => '09:00', 'end' => '15:00'], 6 => ['off' => true]]),
+            'time_off' => \json_encode([
+                ['from' => '2026-11-10', 'to' => '2026-11-11', 'start' => '', 'end' => '', 'reason' => 'Holiday'],
+                ['from' => '2026-11-12', 'to' => '2026-11-12', 'start' => '14:00', 'end' => '17:00', 'reason' => ''],
+            ]),
+        ];
+
+        // Monday 9 Nov: works 09:00 to 15:00
+        $this->assertNull(AppointmentRules::unavailableReason($ella, '2026-11-09 10:00:00', '2026-11-09 11:00:00'));
+        $this->assertStringContainsString('works 09:00 to 15:00', (string) AppointmentRules::unavailableReason($ella, '2026-11-09 14:30:00', '2026-11-09 15:30:00'));
+        $this->assertStringContainsString('on their break', (string) AppointmentRules::unavailableReason($ella, '2026-11-09 11:30:00', '2026-11-09 12:30:00'));
+        // Saturday is a day off
+        $this->assertStringContainsString('does not work on Saturdays', (string) AppointmentRules::unavailableReason($ella, '2026-11-14 10:00:00', '2026-11-14 11:00:00'));
+        // Whole-day holiday, with its reason
+        $this->assertStringContainsString('(Holiday)', (string) AppointmentRules::unavailableReason($ella, '2026-11-11 10:00:00', '2026-11-11 11:00:00'));
+        $this->assertNull(AppointmentRules::unavailableReason($ella, '2026-11-13 10:00:00', '2026-11-13 11:00:00'));
+        // Part day: off from 14:00 on the 12th only
+        $this->assertNull(AppointmentRules::unavailableReason($ella, '2026-11-12 10:00:00', '2026-11-12 11:00:00'));
+        $this->assertStringContainsString('from 14:00 to 17:00', (string) AppointmentRules::unavailableReason($ella, '2026-11-12 13:30:00', '2026-11-12 14:30:00'));
+        // Nobody chosen, or nothing set: always available
+        $this->assertNull(AppointmentRules::unavailableReason(null, '2026-11-11 10:00:00', '2026-11-11 11:00:00'));
+        $this->assertNull(AppointmentRules::unavailableReason(['name' => 'Ben'], '2026-11-11 10:00:00', '2026-11-11 11:00:00'));
+    }
+
+    public function test_staff_can_book_any_date_but_not_outside_the_opening_hours(): void
+    {
+        // A past date and one years away are fine for staff (the website's notice and horizon limits do not apply)
+        $past = AppointmentRules::staffSlot($this->config(), new \DateTimeImmutable('2025-03-03 10:00'), 60);
+        $this->assertSame('2025-03-03 10:00:00', $past['startsAt']);
+        $far = AppointmentRules::staffSlot($this->config(), new \DateTimeImmutable('2031-03-03 10:00'), 60);
+        $this->assertSame('2031-03-03 11:00:00', $far['endsAt']);
+
+        foreach (['2026-11-04 08:45', '2026-11-04 16:30', '2026-11-08 10:00'] as $bad) {
+            try {
+                AppointmentRules::staffSlot($this->config(), new \DateTimeImmutable($bad), 60);
+                $this->fail("{$bad} should be refused");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertNotSame('', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_a_decline_or_cancel_email_carries_the_message_and_the_phone_number(): void
+    {
+        $appointment = ['customer_name' => 'Pat', 'type_name' => 'Cut', 'resource_name' => 'Amy', 'starts_at' => '2026-11-05 14:00:00', 'ends_at' => '2026-11-05 15:00:00', 'reference' => 'ABC1234567'];
+
+        foreach (['declined', 'cancelled'] as $kind) {
+            $mail = AppointmentMail::$kind(appointment: $appointment, siteName: 'Shop', message: "Dan is free at 3pm <b>Thursday</b>\nSorry", phone: '01234 567890');
+            $this->assertStringContainsString('Dan is free at 3pm &lt;b&gt;Thursday&lt;/b&gt;', $mail['html'], "{$kind}: the message is escaped");
+            $this->assertStringContainsString('white-space:pre-line', $mail['html'], "{$kind}: line breaks are kept");
+            $this->assertStringContainsString('please call us on 01234 567890', $mail['html'], "{$kind}: phone line");
+
+            $plain = AppointmentMail::$kind(appointment: $appointment, siteName: 'Shop');
+            $this->assertStringNotContainsString('white-space:pre-line', $plain['html'], "{$kind}: no message, no message paragraph");
+            $this->assertStringNotContainsString('please call us', $plain['html'], "{$kind}: no phone set, no call sentence");
+            $this->assertStringContainsString('send a new request on our website', $plain['html']);
+        }
+    }
+
     public function test_a_break_must_start_before_it_ends(): void
     {
         $this->expectException(\InvalidArgumentException::class);
