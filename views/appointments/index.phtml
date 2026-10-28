@@ -20,7 +20,13 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 <div class="card mb-4" id="schedule">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <h5 class="mb-0">Schedule</h5>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Schedule view">
+                <button type="button" class="btn btn-outline-secondary active" id="scheduleModeDay">Day</button>
+                <button type="button" class="btn btn-outline-secondary" id="scheduleModeWeek">Week</button>
+            </div>
+            <select class="form-select form-select-sm d-none" id="schedulePerson" style="width: 10rem;" aria-label="Whose week"></select>
+            <button type="button" class="btn btn-sm btn-primary" id="scheduleNew"><i class="bx bx-plus me-1"></i>New appointment</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="scheduleToday">Today</button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="schedulePrev" aria-label="Previous day"><i class="bx bx-chevron-left"></i></button>
             <input type="date" class="form-control form-control-sm" id="scheduleDate" style="width: 10rem;">
@@ -70,7 +76,24 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="appointmentId">
-                    <p class="mb-3" id="appointmentWho"></p>
+                    <div id="appointmentNewFields" class="d-none">
+                        <div class="row">
+                            <div class="col-12 mb-3">
+                                <label class="form-label" for="appointmentName">Customer name</label>
+                                <input type="text" class="form-control" id="appointmentName" maxlength="100">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label" for="appointmentPhone">Phone</label>
+                                <input type="tel" class="form-control" id="appointmentPhone" maxlength="30">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label" for="appointmentEmail">Email (to send confirmation)</label>
+                                <input type="email" class="form-control" id="appointmentEmail" maxlength="150">
+                            </div>
+                        </div>
+                    </div>
+                    <p class="mb-1 fw-semibold" id="appointmentCustomer"></p>
+                    <p class="mb-3 small text-muted" id="appointmentWho"></p>
                     <p class="mb-3 text-muted" id="appointmentTheirNotes"></p>
                     <div class="row">
                         <div class="col-6 mb-3">
@@ -100,15 +123,25 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="appointmentNotes">Your notes (never shown to the customer)</label>
+                        <label class="form-label" for="appointmentNotes" id="appointmentNotesLabel">Your notes (never shown to the customer)</label>
                         <textarea class="form-control" id="appointmentNotes" rows="2"></textarea>
                     </div>
-                    <div class="form-text">Changing the time of a confirmed appointment emails the customer the new time.</div>
+                    <div class="mb-3 d-none" id="appointmentDeclineBox">
+                        <label class="form-label" for="appointmentDeclineMessage">Message to the customer (optional, goes in the email)</label>
+                        <textarea class="form-control" id="appointmentDeclineMessage" rows="3" maxlength="1000" placeholder="For example: Dan is free at 3pm on Thursday if that suits you."></textarea>
+                    </div>
+                    <div class="form-text">Confirming, declining or cancelling emails the customer. Changing the time of a confirmed appointment emails them the new time.</div>
                     <div id="appointmentResult" class="alert d-none mt-3"></div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="appointmentSaveButton">Save</button>
+                <div class="modal-footer justify-content-between">
+                    <div>
+                        <button type="button" class="btn btn-link text-danger px-0 d-none" id="appointmentDeclineButton" data-decision="decline">Decline request</button>
+                        <button type="button" class="btn btn-link text-danger px-0 d-none" id="appointmentCancelButton" data-decision="cancel">Cancel appointment</button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary" id="appointmentSaveButton">Save changes</button>
+                        <button type="button" class="btn btn-success d-none" id="appointmentConfirmButton" data-decision="confirm">Confirm</button>
+                    </div>
                 </div>
             </form>
         </div>

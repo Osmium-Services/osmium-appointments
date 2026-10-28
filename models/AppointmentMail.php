@@ -64,33 +64,35 @@ class AppointmentMail
     /**
      * @return array{subject: string, html: string}
      */
-    public static function declined(array $appointment, string $siteName): array
+    public static function declined(array $appointment, string $siteName, string $message = '', string $phone = ''): array
     {
         return self::compose(
             siteName: $siteName,
             subject: 'About your appointment request',
             heading: 'Sorry, ' . $appointment['customer_name'],
-            paragraphs: [
+            paragraphs: \array_values(\array_filter([
                 'We are not able to take this appointment:',
                 self::details($appointment),
-                'Please reply to this email or send a new request for another time.',
-            ],
+                $message !== '' ? '<p style="white-space:pre-line">' . self::e($message) . '</p>' : '',
+                $phone !== '' ? 'To arrange another time, please call us on ' . $phone . ' or send a new request on our website.' : 'To arrange another time, please send a new request on our website.',
+            ], static fn(string $paragraph): bool => $paragraph !== '')),
         );
     }
 
     /**
      * @return array{subject: string, html: string}
      */
-    public static function cancelled(array $appointment, string $siteName): array
+    public static function cancelled(array $appointment, string $siteName, string $message = '', string $phone = ''): array
     {
         return self::compose(
             siteName: $siteName,
             subject: 'Your appointment is cancelled',
             heading: 'Your appointment is cancelled',
-            paragraphs: [
+            paragraphs: \array_values(\array_filter([
                 self::details($appointment),
-                'If you did not expect this, or would like another time, please reply to this email.',
-            ],
+                $message !== '' ? '<p style="white-space:pre-line">' . self::e($message) . '</p>' : '',
+                $phone !== '' ? 'To arrange another time, please call us on ' . $phone . ' or send a new request on our website.' : 'To arrange another time, please send a new request on our website.',
+            ], static fn(string $paragraph): bool => $paragraph !== '')),
         );
     }
 

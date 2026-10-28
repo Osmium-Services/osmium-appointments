@@ -46,15 +46,17 @@ class AppointmentNotifier
         $this->announce(event: 'appointment.changed', appointment: $appointment);
     }
 
-    public function declined(array $appointment): void
+    public function declined(array $appointment, string $message = ''): void
     {
-        $this->send(to: $appointment['customer_email'], mail: AppointmentMail::declined($appointment, $this->siteName()));
+        $phone = \trim((string) ($this->osmium->config->company->phone ?? ''));
+        $this->send(to: $appointment['customer_email'], mail: AppointmentMail::declined(appointment: $appointment, siteName: $this->siteName(), message: $message, phone: $phone));
         $this->announce(event: 'appointment.declined', appointment: $appointment);
     }
 
-    public function cancelled(array $appointment): void
+    public function cancelled(array $appointment, string $message = ''): void
     {
-        $this->send(to: $appointment['customer_email'], mail: AppointmentMail::cancelled($appointment, $this->siteName()));
+        $phone = \trim((string) ($this->osmium->config->company->phone ?? ''));
+        $this->send(to: $appointment['customer_email'], mail: AppointmentMail::cancelled(appointment: $appointment, siteName: $this->siteName(), message: $message, phone: $phone));
         $this->announce(event: 'appointment.cancelled', appointment: $appointment);
     }
 
@@ -91,6 +93,9 @@ class AppointmentNotifier
      */
     private function send(string $to, array $mail): void
     {
+        $noAddress = \filter_var($to, FILTER_VALIDATE_EMAIL) === false; // A telephone customer may have given none
+        if ($noAddress) return;
+
         try {
             $result = MailerFactory::make($this->osmium->config)->send(
                 recipients: [['email' => $to]],

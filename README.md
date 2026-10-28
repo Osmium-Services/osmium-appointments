@@ -4,7 +4,7 @@ Appointment requests for any kind of business. A customer asks for a time, you c
 
 ## Day to day (admin > Appointments)
 
-A **Schedule** for one day at a time, with a column for each person, room or item (or one column if there are none): waiting requests and confirmed appointments as blocks at their time and length, breaks and closed hours shaded, and day arrows. Click a block to confirm, move, reassign or cancel it. Below it, the list of appointments with the Deleted bin.
+A **Schedule**: a **Day** view with a column for each person, room or item (or one column if there are none), or a **Week** view for one of them with a column for each day: waiting requests and confirmed appointments as blocks at their time and length, breaks and closed hours shaded, and day arrows. Click a block to see who it is, then confirm or decline a request, move or reassign it, or cancel a confirmed one (each emails the customer). Below it, the list of appointments with the Deleted bin.
 
 ## Setup (admin > Services > Osmium Appointments)
 

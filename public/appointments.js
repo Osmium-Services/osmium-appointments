@@ -58,10 +58,102 @@
         new bootstrap.Modal(byId(id)).show();
     }
 
+    const DECISIONS = {
+        confirm: { button: 'appointmentConfirmButton', label: 'Confirm', statuses: ['requested'], sure: false },
+        decline: { button: 'appointmentDeclineButton', label: 'Decline request', statuses: ['requested'], sure: true },
+        cancel: { button: 'appointmentCancelButton', label: 'Cancel appointment', statuses: ['confirmed'], sure: true }
+    };
+    let pendingDecision = null;
+    let pendingTimer = null;
+
+    function resetDecisionButtons(status) {
+        pendingDecision = null;
+        window.clearTimeout(pendingTimer);
+        byId('appointmentDeclineBox').classList.add('d-none');
+        Object.keys(DECISIONS).forEach(function (name) {
+            const decision = DECISIONS[name];
+            const button = byId(decision.button);
+            button.textContent = decision.label;
+            button.classList.toggle('d-none', decision.statuses.indexOf(status) === -1);
+            button.disabled = false;
+        });
+
+        // Waiting for an answer, Confirm is the main action; once confirmed, saving changes is
+        const save = byId('appointmentSaveButton');
+        save.classList.toggle('btn-primary', status !== 'requested');
+        save.classList.toggle('btn-outline-primary', status === 'requested');
+    }
+
+    // Decline and Cancel email the customer, so the first click asks "sure?" and the second one does it
+    async function decide(name) {
+        const decision = DECISIONS[name];
+        const button = byId(decision.button);
+
+        if (decision.sure && pendingDecision !== name) {
+            resetDecisionButtons(currentStatus);
+            pendingDecision = name;
+            button.textContent = 'Click again to ' + decision.label.toLowerCase();
+            byId('appointmentDeclineBox').classList.toggle('d-none', name === 'confirm');
+            // Declining or cancelling may need a few words for the customer, so give time to type them
+            const waitMs = 120000;
+            pendingTimer = window.setTimeout(function () { resetDecisionButtons(currentStatus); }, waitMs);
+            return;
+        }
+
+        clear('appointmentResult');
+        button.disabled = true;
+        try {
+            const payload = { action: name, id: byId('appointmentId').value };
+            if (name !== 'confirm') payload.message = byId('appointmentDeclineMessage').value;
+            const result = await post(payload);
+            if (result.success) {
+                window.location.reload();
+                return;
+            }
+
+            show('appointmentResult', 'danger', result.error || 'That did not work');
+        } catch (error) {
+            show('appointmentResult', 'danger', 'An error occurred');
+        }
+        resetDecisionButtons(currentStatus);
+    }
+
+    let currentStatus = '';
+
+    // A booking taken by phone or in person: the form opens empty, on the day being looked at
+    function openNewAppointment(dateText) {
+        clear('appointmentResult');
+        byId('appointmentForm').reset();
+        byId('appointmentId').value = '';
+        currentStatus = '';
+        resetDecisionButtons('');
+        byId('appointmentModalTitle').textContent = 'New appointment';
+        byId('appointmentNewFields').classList.remove('d-none');
+        byId('appointmentCustomer').classList.add('d-none');
+        byId('appointmentWho').classList.add('d-none');
+        byId('appointmentTheirNotes').textContent = '';
+        byId('appointmentNotesLabel').textContent = 'Notes (kept on the booking)';
+        byId('appointmentSaveButton').textContent = 'Book it';
+        byId('appointmentSaveButton').classList.add('btn-primary');
+        byId('appointmentSaveButton').classList.remove('btn-outline-primary');
+        byId('appointmentResource').value = '0';
+        byId('appointmentDate').value = dateText;
+        openModal('appointmentModal');
+    }
+
     function openAppointment(appointment) {
         clear('appointmentResult');
+        byId('appointmentModalTitle').textContent = 'Edit appointment';
+        byId('appointmentNewFields').classList.add('d-none');
+        byId('appointmentCustomer').classList.remove('d-none');
+        byId('appointmentWho').classList.remove('d-none');
+        byId('appointmentNotesLabel').textContent = 'Your notes (never shown to the customer)';
+        byId('appointmentSaveButton').textContent = 'Save changes';
+        currentStatus = appointment.status;
+        resetDecisionButtons(appointment.status);
         byId('appointmentId').value = appointment.id;
-        byId('appointmentWho').textContent = appointment.reference + ' (' + appointment.status + ')';
+        byId('appointmentCustomer').textContent = [appointment.customerName, appointment.customerEmail, appointment.customerPhone].filter(Boolean).join(' · ');
+        byId('appointmentWho').textContent = appointment.reference + ' · ' + (appointment.status === 'requested' ? 'waiting for you' : appointment.status);
         byId('appointmentTheirNotes').textContent = appointment.customerNotes ? 'They wrote: ' + appointment.customerNotes : '';
         byId('appointmentType').value = appointment.typeId;
         byId('appointmentResource').value = appointment.resourceId === '' ? '0' : appointment.resourceId;
@@ -156,43 +248,103 @@
         }));
     }
 
-    function renderSchedule(dateText) {
-        const grid = byId('scheduleGrid');
-        const date = new Date(dateText + 'T00:00:00');
-        const weekday = (date.getDay() + 6) % 7 + 1;
-        const hours = config.schedule.hours[weekday] || null;
+    // What the schedule shows: a day (a column for each person) or a week (a column for each day, for one person)
+    const scheduleState = { mode: 'day', person: '', date: '' };
 
-        const today = Object.values(config.appointments).filter(function (item) {
+    function weekdayOf(date) {
+        return (date.getDay() + 6) % 7 + 1;
+    }
+
+    function activeOn(dateText) {
+        return Object.values(config.appointments).filter(function (item) {
             return item.date === dateText && (item.status === 'requested' || item.status === 'confirmed');
         });
-        const people = Object.values(config.resources).filter(function (person) { return person.enabled; });
-        const unassigned = today.filter(function (item) { return item.resourceId === ''; });
+    }
 
+    function enabledPeople() {
+        return Object.values(config.resources).filter(function (person) { return person.enabled; });
+    }
+
+    /**
+     * The columns for the date shown. Each has a title, its date, which appointments belong (a person's id, '' for
+     * "no one in particular", or null for all of them) and that person's daily break.
+     */
+    function scheduleColumns(dateText) {
+        const date = new Date(dateText + 'T00:00:00');
+        const people = enabledPeople();
+
+        if (scheduleState.mode === 'week') {
+            const person = people.filter(function (candidate) { return String(candidate.id) === scheduleState.person; })[0] || null;
+            const monday = new Date(date);
+            monday.setDate(date.getDate() - (weekdayOf(date) - 1));
+
+            return Array.from({ length: 7 }, function (unused, offset) {
+                const day = new Date(monday);
+                day.setDate(monday.getDate() + offset);
+
+                return {
+                    title: day.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+                    date: isoDate(day),
+                    person: person ? String(person.id) : null,
+                    breakStart: person ? person.breakStart : '',
+                    breakEnd: person ? person.breakEnd : ''
+                };
+            });
+        }
+
+        const columns = people.map(function (person) {
+            return { title: person.name, date: dateText, person: String(person.id), breakStart: person.breakStart, breakEnd: person.breakEnd };
+        });
+        const unassigned = activeOn(dateText).some(function (item) { return item.resourceId === ''; });
+        if (unassigned || columns.length === 0) {
+            columns.push({ title: columns.length === 0 ? 'Appointments' : 'No one in particular', date: dateText, person: columns.length === 0 ? null : '', breakStart: '', breakEnd: '' });
+        }
+
+        return columns;
+    }
+
+    function itemsFor(column) {
+        return activeOn(column.date).filter(function (item) {
+            return column.person === null || String(item.resourceId) === column.person;
+        });
+    }
+
+    function renderSchedule(dateText) {
+        const grid = byId('scheduleGrid');
+        const columns = scheduleColumns(dateText);
         grid.textContent = '';
-        if (hours === null && today.length === 0) {
-            grid.appendChild(el('div', 'sched-note')).textContent = 'Closed this day.';
+
+        columns.forEach(function (column) {
+            column.hours = config.schedule.hours[weekdayOf(new Date(column.date + 'T00:00:00'))] || null;
+            column.items = itemsFor(column);
+        });
+
+        const nothingToShow = columns.every(function (column) { return column.hours === null && column.items.length === 0; });
+        if (nothingToShow) {
+            grid.appendChild(el('div', 'sched-note')).textContent = scheduleState.mode === 'week' ? 'Closed this week.' : 'Closed this day.';
             return;
         }
 
         // The visible hours: opening time, widened to take in anything already booked outside it
-        let first = hours ? toMinutes(hours.open) : 24 * 60;
-        let last = hours ? toMinutes(hours.close) : 0;
-        today.forEach(function (item) {
-            first = Math.min(first, toMinutes(item.time));
-            last = Math.max(last, toMinutes(item.endTime));
+        let first = 24 * 60;
+        let last = 0;
+        columns.forEach(function (column) {
+            if (column.hours) {
+                first = Math.min(first, toMinutes(column.hours.open));
+                last = Math.max(last, toMinutes(column.hours.close));
+            }
+            column.items.forEach(function (item) {
+                first = Math.min(first, toMinutes(item.time));
+                last = Math.max(last, toMinutes(item.endTime));
+            });
         });
         const origin = Math.floor(first / 60) * 60;
         const end = Math.ceil(last / 60) * 60;
         const height = (end - origin) * PX_PER_MINUTE;
 
-        const columns = people.map(function (person) { return { id: person.id, name: person.name, breakStart: person.breakStart, breakEnd: person.breakEnd }; });
-        if (unassigned.length > 0 || columns.length === 0) {
-            columns.push({ id: '', name: columns.length === 0 ? 'Appointments' : 'No one in particular', breakStart: '', breakEnd: '' });
-        }
-
         const table = el('div', 'sched', { gridTemplateColumns: '3.5rem repeat(' + columns.length + ', minmax(7rem, 1fr))' });
         table.appendChild(el('div', 'sched-head'));
-        columns.forEach(function (column) { table.appendChild(el('div', 'sched-head')).textContent = column.name; });
+        columns.forEach(function (column) { table.appendChild(el('div', 'sched-head')).textContent = column.title; });
 
         const times = el('div', 'sched-times', { height: height + 'px' });
         for (let at = origin; at <= end; at += 60) {
@@ -208,22 +360,22 @@
                 lane.appendChild(el('div', 'sched-line', { top: (at - origin) * PX_PER_MINUTE + 'px' }));
             }
 
-            if (hours === null) {
+            if (column.hours === null) {
                 shade(lane, 'sched-closed', origin, end, origin);
             } else {
-                shade(lane, 'sched-closed', origin, toMinutes(hours.open), origin);
-                shade(lane, 'sched-closed', toMinutes(hours.close), end, origin);
-                if (hours.breakStart) shade(lane, 'sched-break', toMinutes(hours.breakStart), toMinutes(hours.breakEnd), origin);
+                shade(lane, 'sched-closed', origin, toMinutes(column.hours.open), origin);
+                shade(lane, 'sched-closed', toMinutes(column.hours.close), end, origin);
+                if (column.hours.breakStart) shade(lane, 'sched-break', toMinutes(column.hours.breakStart), toMinutes(column.hours.breakEnd), origin);
             }
-            if (column.breakStart) shade(lane, 'sched-break', toMinutes(column.breakStart), toMinutes(column.breakEnd), origin);
+            if (column.breakStart && column.hours !== null) shade(lane, 'sched-break', toMinutes(column.breakStart), toMinutes(column.breakEnd), origin);
 
-            today.filter(function (item) { return String(item.resourceId) === String(column.id); }).forEach(function (item) {
+            column.items.forEach(function (item) {
                 const block = el('button', 'sched-appt sched-' + item.status, {
                     top: (toMinutes(item.time) - origin) * PX_PER_MINUTE + 'px',
                     height: Math.max(18, (toMinutes(item.endTime) - toMinutes(item.time)) * PX_PER_MINUTE - 2) + 'px'
                 });
                 block.type = 'button';
-                block.title = item.time + ' to ' + item.endTime + ' ' + item.customerName + ' (' + item.status + ')';
+                block.title = item.time + ' to ' + item.endTime + ' ' + item.customerName + ' (' + item.status + ')' + (item.typeName ? ', ' + item.typeName : '');
                 block.appendChild(document.createTextNode(item.time + ' ' + item.customerName));
                 block.appendChild(el('small')).textContent = item.typeName;
                 block.addEventListener('click', function () { openAppointment(item); });
@@ -236,23 +388,73 @@
         grid.appendChild(table);
     }
 
+    function rememberView() {
+        try {
+            window.localStorage.setItem('osmiumAppointmentsView', JSON.stringify(Object.assign({}, scheduleState, { date: byId('scheduleDate').value })));
+        } catch (error) {
+            // Private windows can refuse storage; the view just is not remembered
+        }
+    }
+
+    function restoreView() {
+        try {
+            const saved = JSON.parse(window.localStorage.getItem('osmiumAppointmentsView') || 'null');
+            if (saved && (saved.mode === 'day' || saved.mode === 'week')) {
+                scheduleState.mode = saved.mode;
+                scheduleState.person = String(saved.person || '');
+                scheduleState.date = /^\d{4}-\d\d-\d\d$/.test(saved.date || '') ? saved.date : '';
+            }
+        } catch (error) {
+            // Nothing remembered: start on the day view
+        }
+    }
+
     function initSchedule() {
         const input = byId('scheduleDate');
+        const select = byId('schedulePerson');
+        const people = enabledPeople();
+
+        restoreView();
+        const known = people.some(function (person) { return String(person.id) === scheduleState.person; });
+        if (!known) scheduleState.person = people.length > 0 ? String(people[0].id) : '';
+
+        people.forEach(function (person) {
+            const option = document.createElement('option');
+            option.value = String(person.id);
+            option.textContent = person.name;
+            select.appendChild(option);
+        });
+
+        const draw = function () {
+            const weekMode = scheduleState.mode === 'week';
+            byId('scheduleModeDay').classList.toggle('active', !weekMode);
+            byId('scheduleModeWeek').classList.toggle('active', weekMode);
+            select.classList.toggle('d-none', !weekMode || people.length === 0);
+            select.value = scheduleState.person;
+            byId('schedulePrev').setAttribute('aria-label', weekMode ? 'Previous week' : 'Previous day');
+            byId('scheduleNext').setAttribute('aria-label', weekMode ? 'Next week' : 'Next day');
+            rememberView();
+            if (input.value) renderSchedule(input.value);
+        };
         const show = function (date) {
             input.value = isoDate(date);
-            renderSchedule(input.value);
+            draw();
         };
-        const shift = function (days) {
+        const shift = function (direction) {
             const date = new Date(input.value + 'T00:00:00');
-            date.setDate(date.getDate() + days);
+            date.setDate(date.getDate() + direction * (scheduleState.mode === 'week' ? 7 : 1));
             show(date);
         };
 
         on('scheduleToday', 'click', function () { show(new Date()); });
+        on('scheduleNew', 'click', function () { openNewAppointment(input.value || isoDate(new Date())); });
         on('schedulePrev', 'click', function () { shift(-1); });
         on('scheduleNext', 'click', function () { shift(1); });
-        input.addEventListener('change', function () { if (input.value) renderSchedule(input.value); });
-        show(new Date());
+        on('scheduleModeDay', 'click', function () { scheduleState.mode = 'day'; draw(); });
+        on('scheduleModeWeek', 'click', function () { scheduleState.mode = 'week'; draw(); });
+        select.addEventListener('change', function () { scheduleState.person = select.value; draw(); });
+        input.addEventListener('change', function () { if (input.value) draw(); });
+        show(scheduleState.date ? new Date(scheduleState.date + 'T00:00:00') : new Date());
     }
 
     function init() {
@@ -267,8 +469,23 @@
             if (e.detail.action === 'edit-resource') openResource(config.resources[e.detail.id]);
         });
 
+        Object.keys(DECISIONS).forEach(function (name) {
+            on(DECISIONS[name].button, 'click', function () { decide(name); });
+        });
+
         on('appointmentForm', 'submit', function (e) {
-            submit(e, 'appointmentResult', {
+            const creating = byId('appointmentId').value === '';
+            submit(e, 'appointmentResult', creating ? {
+                action: 'create',
+                name: byId('appointmentName').value,
+                phone: byId('appointmentPhone').value,
+                email: byId('appointmentEmail').value,
+                type_id: byId('appointmentType').value,
+                resource_id: byId('appointmentResource').value,
+                date: byId('appointmentDate').value,
+                time: byId('appointmentTime').value,
+                notes: byId('appointmentNotes').value
+            } : {
                 action: 'reschedule',
                 id: byId('appointmentId').value,
                 type_id: byId('appointmentType').value,

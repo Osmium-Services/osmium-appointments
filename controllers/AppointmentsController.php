@@ -6,6 +6,7 @@ namespace Osmium\Services\OsmiumAppointments\Controllers;
 
 use Osmium\Modules\Admin\Core\AdminController;
 use Osmium\Services\OsmiumAppointments\Models\Appointment;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentAlternatives;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentNotifier;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentResource;
@@ -90,8 +91,9 @@ class AppointmentsController extends AdminController
         try {
             $result = match ($action) {
                 'confirm' => $this->confirm($id),
-                'decline' => $this->decline($id),
-                'cancel' => $this->cancel($id),
+                'decline' => $this->decline(id: $id, message: \trim((string) ($input['message'] ?? ''))),
+                'cancel' => $this->cancel(id: $id, message: \trim((string) ($input['message'] ?? ''))),
+                'create' => $this->createByStaff($input),
                 'reschedule' => $this->reschedule(id: $id, input: $input),
                 'delete' => $this->deleteAppointment($id),
                 'restore' => $this->restoreAppointment($id),
@@ -128,28 +130,85 @@ class AppointmentsController extends AdminController
         return ['success' => true, 'id' => $id];
     }
 
-    private function decline(int $id): array
+    private function decline(int $id, string $message): array
     {
         $model = new Appointment($this->osmium->dataSource);
         $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'declined');
 
         $model->setStatus(id: $id, status: 'declined', sequence: (int) $appointment['ics_sequence']);
         $this->logChange(action: 'Declined', id: $id, name: $appointment['customer_name']);
-        (new AppointmentNotifier($this->osmium))->declined($model->get($id));
+        (new AppointmentNotifier($this->osmium))->declined(appointment: $model->get($id), message: \mb_substr($message, 0, 1000));
 
         return ['success' => true, 'id' => $id];
     }
 
-    private function cancel(int $id): array
+    private function cancel(int $id, string $message): array
     {
         $model = new Appointment($this->osmium->dataSource);
         $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested', 'confirmed'], verb: 'cancelled');
 
         $model->setStatus(id: $id, status: 'cancelled', sequence: (int) $appointment['ics_sequence'] + 1);
         $this->logChange(action: 'Cancelled', id: $id, name: $appointment['customer_name']);
-        (new AppointmentNotifier($this->osmium))->cancelled($model->get($id));
+        (new AppointmentNotifier($this->osmium))->cancelled(appointment: $model->get($id), message: \mb_substr($message, 0, 1000));
 
         return ['success' => true, 'id' => $id];
+    }
+
+    /**
+     * An appointment made for a customer who rang or called in: confirmed at once (and emailed, when there is an
+     * address). Opening hours, breaks and clashes still apply; the notice and how-far-ahead limits are for the website.
+     */
+    private function createByStaff(array $input): array
+    {
+        $db = $this->osmium->dataSource;
+
+        $name = \trim((string) ($input['name'] ?? ''));
+        $nameBad = $name === '' || \mb_strlen($name) > 100;
+        if ($nameBad) throw new \InvalidArgumentException('Enter the customer\'s name (up to 100 characters)');
+
+        $email = \trim((string) ($input['email'] ?? ''));
+        $phone = \trim((string) ($input['phone'] ?? ''));
+        $emailBad = $email !== '' && (\filter_var($email, FILTER_VALIDATE_EMAIL) === false || \strlen($email) > 150);
+        if ($emailBad) throw new \InvalidArgumentException('That email address is not valid');
+
+        $noContact = $email === '' && $phone === '';
+        if ($noContact) throw new \InvalidArgumentException('Enter a phone number or an email address');
+        if (\strlen($phone) > 30) throw new \InvalidArgumentException('Phone number is limited to 30 characters');
+
+        $type = (new AppointmentType($db))->get((int) ($input['type_id'] ?? 0));
+        if ($type === null) throw new \InvalidArgumentException('Choose what is being booked');
+
+        $resourceId = (int) ($input['resource_id'] ?? 0);
+        $resource = $resourceId > 0 ? (new AppointmentResource($db))->get($resourceId) : null;
+        $resourceMissing = $resourceId > 0 && $resource === null;
+        if ($resourceMissing) throw new \InvalidArgumentException('Choose who or what is booked');
+
+        $date = \trim((string) ($input['date'] ?? ''));
+        $time = \trim((string) ($input['time'] ?? ''));
+        $config = AppointmentConfig::get(companyHours: $this->osmium->config->company->openingHours ?? null);
+        $now = new \DateTimeImmutable('now');
+        $slot = AppointmentRules::slot(config: ['minNoticeHours' => 0, 'maxDaysAhead' => 730] + $config, date: $date, time: $time, durationMinutes: (int) $type['duration_minutes'], now: $now);
+
+        $model = new Appointment($db);
+        $people = \array_values(\array_filter((new AppointmentResource($db))->listAll(), static fn(array $row): bool => (bool) $row['enabled']));
+        $alternatives = new AppointmentAlternatives(appointments: $model, config: $config, now: $now);
+
+        $needsAssigning = $resource === null && $people !== [];
+        $assigned = $needsAssigning ? $model->findFreeResource($people, $slot['startsAt'], $slot['endsAt']) : $resource;
+        $taken = $needsAssigning ? $assigned === null : !$alternatives->isFree($assigned, $slot['startsAt'], $slot['endsAt']);
+        if ($taken) throw new \InvalidArgumentException($alternatives->message(chosen: $resource, people: $people, date: $date, time: $time, minutes: (int) $type['duration_minutes']));
+
+        $notes = \trim((string) ($input['notes'] ?? ''));
+        $created = $model->create(
+            request: ['typeId' => (int) $type['id'], 'resourceId' => $assigned !== null ? (int) $assigned['id'] : null, 'name' => $name, 'email' => $email, 'phone' => $phone !== '' ? $phone : null, 'notes' => $notes !== '' ? $notes : null],
+            startsAt: $slot['startsAt'],
+            endsAt: $slot['endsAt'],
+        );
+        $model->setStatus(id: $created['id'], status: 'confirmed', sequence: 0);
+        $this->logChange(action: 'Created by staff', id: $created['id'], name: $name);
+        (new AppointmentNotifier($this->osmium))->confirmed($model->get($created['id']));
+
+        return ['success' => true, 'id' => $created['id']];
     }
 
     private function reschedule(int $id, array $input): array
@@ -404,6 +463,8 @@ class AppointmentsController extends AdminController
             'typeId' => (int) $row['type_id'],
             'resourceId' => $row['resource_id'] !== null ? (int) $row['resource_id'] : '',
             'customerName' => (string) $row['customer_name'],
+            'customerEmail' => (string) $row['customer_email'],
+            'customerPhone' => (string) ($row['customer_phone'] ?? ''),
             'endTime' => (new \DateTimeImmutable($row['ends_at']))->format('H:i'),
             'date' => $start->format('Y-m-d'),
             'time' => $start->format('H:i'),
