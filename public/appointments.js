@@ -48,6 +48,12 @@
         }
     }
 
+    // Attaches a handler when the element is on this page (the schedule page and the setup page share this script)
+    function on(id, event, handler) {
+        const node = byId(id);
+        if (node) node.addEventListener(event, handler);
+    }
+
     function openModal(id) {
         new bootstrap.Modal(byId(id)).show();
     }
@@ -111,7 +117,147 @@
         return payload;
     }
 
+    // ---- Schedule: one day, a column for each person (or one column when there are none) ----
+
+    const PX_PER_MINUTE = 1.3;
+
+    function toMinutes(time) {
+        const parts = time.split(':');
+
+        return Number(parts[0]) * 60 + Number(parts[1]);
+    }
+
+    function pad(number) {
+        return String(number).padStart(2, '0');
+    }
+
+    function clock(minutes) {
+        return pad(Math.floor(minutes / 60)) + ':' + pad(minutes % 60);
+    }
+
+    function isoDate(date) {
+        return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+    }
+
+    function el(tag, className, styles) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (styles) Object.assign(node.style, styles);
+
+        return node;
+    }
+
+    function shade(parent, className, fromMinutes, toMinutes_, origin) {
+        if (toMinutes_ <= fromMinutes) return;
+
+        parent.appendChild(el('div', 'sched-shade ' + className, {
+            top: (fromMinutes - origin) * PX_PER_MINUTE + 'px',
+            height: (toMinutes_ - fromMinutes) * PX_PER_MINUTE + 'px'
+        }));
+    }
+
+    function renderSchedule(dateText) {
+        const grid = byId('scheduleGrid');
+        const date = new Date(dateText + 'T00:00:00');
+        const weekday = (date.getDay() + 6) % 7 + 1;
+        const hours = config.schedule.hours[weekday] || null;
+
+        const today = Object.values(config.appointments).filter(function (item) {
+            return item.date === dateText && (item.status === 'requested' || item.status === 'confirmed');
+        });
+        const people = Object.values(config.resources).filter(function (person) { return person.enabled; });
+        const unassigned = today.filter(function (item) { return item.resourceId === ''; });
+
+        grid.textContent = '';
+        if (hours === null && today.length === 0) {
+            grid.appendChild(el('div', 'sched-note')).textContent = 'Closed this day.';
+            return;
+        }
+
+        // The visible hours: opening time, widened to take in anything already booked outside it
+        let first = hours ? toMinutes(hours.open) : 24 * 60;
+        let last = hours ? toMinutes(hours.close) : 0;
+        today.forEach(function (item) {
+            first = Math.min(first, toMinutes(item.time));
+            last = Math.max(last, toMinutes(item.endTime));
+        });
+        const origin = Math.floor(first / 60) * 60;
+        const end = Math.ceil(last / 60) * 60;
+        const height = (end - origin) * PX_PER_MINUTE;
+
+        const columns = people.map(function (person) { return { id: person.id, name: person.name, breakStart: person.breakStart, breakEnd: person.breakEnd }; });
+        if (unassigned.length > 0 || columns.length === 0) {
+            columns.push({ id: '', name: columns.length === 0 ? 'Appointments' : 'No one in particular', breakStart: '', breakEnd: '' });
+        }
+
+        const table = el('div', 'sched', { gridTemplateColumns: '3.5rem repeat(' + columns.length + ', minmax(7rem, 1fr))' });
+        table.appendChild(el('div', 'sched-head'));
+        columns.forEach(function (column) { table.appendChild(el('div', 'sched-head')).textContent = column.name; });
+
+        const times = el('div', 'sched-times', { height: height + 'px' });
+        for (let at = origin; at <= end; at += 60) {
+            const label = el('div', 'sched-time', { top: (at - origin) * PX_PER_MINUTE + 'px' });
+            label.textContent = clock(at);
+            times.appendChild(label);
+        }
+        table.appendChild(times);
+
+        columns.forEach(function (column) {
+            const lane = el('div', 'sched-col', { height: height + 'px' });
+            for (let at = origin; at < end; at += 60) {
+                lane.appendChild(el('div', 'sched-line', { top: (at - origin) * PX_PER_MINUTE + 'px' }));
+            }
+
+            if (hours === null) {
+                shade(lane, 'sched-closed', origin, end, origin);
+            } else {
+                shade(lane, 'sched-closed', origin, toMinutes(hours.open), origin);
+                shade(lane, 'sched-closed', toMinutes(hours.close), end, origin);
+                if (hours.breakStart) shade(lane, 'sched-break', toMinutes(hours.breakStart), toMinutes(hours.breakEnd), origin);
+            }
+            if (column.breakStart) shade(lane, 'sched-break', toMinutes(column.breakStart), toMinutes(column.breakEnd), origin);
+
+            today.filter(function (item) { return String(item.resourceId) === String(column.id); }).forEach(function (item) {
+                const block = el('button', 'sched-appt sched-' + item.status, {
+                    top: (toMinutes(item.time) - origin) * PX_PER_MINUTE + 'px',
+                    height: Math.max(18, (toMinutes(item.endTime) - toMinutes(item.time)) * PX_PER_MINUTE - 2) + 'px'
+                });
+                block.type = 'button';
+                block.title = item.time + ' to ' + item.endTime + ' ' + item.customerName + ' (' + item.status + ')';
+                block.appendChild(document.createTextNode(item.time + ' ' + item.customerName));
+                block.appendChild(el('small')).textContent = item.typeName;
+                block.addEventListener('click', function () { openAppointment(item); });
+                lane.appendChild(block);
+            });
+
+            table.appendChild(lane);
+        });
+
+        grid.appendChild(table);
+    }
+
+    function initSchedule() {
+        const input = byId('scheduleDate');
+        const show = function (date) {
+            input.value = isoDate(date);
+            renderSchedule(input.value);
+        };
+        const shift = function (days) {
+            const date = new Date(input.value + 'T00:00:00');
+            date.setDate(date.getDate() + days);
+            show(date);
+        };
+
+        on('scheduleToday', 'click', function () { show(new Date()); });
+        on('schedulePrev', 'click', function () { shift(-1); });
+        on('scheduleNext', 'click', function () { shift(1); });
+        input.addEventListener('change', function () { if (input.value) renderSchedule(input.value); });
+        show(new Date());
+    }
+
     function init() {
+        if (byId('schedule')) initSchedule();
+
         // Row actions come from the ListViews; each Edit fires list:action with its own event name and the row's id
         document.addEventListener('list:action', function (e) {
             if (e.detail.action === 'edit') openAppointment(config.appointments[e.detail.id]);
@@ -121,7 +267,7 @@
             if (e.detail.action === 'edit-resource') openResource(config.resources[e.detail.id]);
         });
 
-        byId('appointmentForm').addEventListener('submit', function (e) {
+        on('appointmentForm', 'submit', function (e) {
             submit(e, 'appointmentResult', {
                 action: 'reschedule',
                 id: byId('appointmentId').value,
@@ -133,7 +279,7 @@
             });
         });
 
-        byId('typeForm').addEventListener('submit', function (e) {
+        on('typeForm', 'submit', function (e) {
             submit(e, 'typeResult', {
                 action: 'save_type',
                 id: byId('typeId').value,
@@ -146,7 +292,7 @@
             });
         });
 
-        byId('resourceForm').addEventListener('submit', function (e) {
+        on('resourceForm', 'submit', function (e) {
             submit(e, 'resourceResult', {
                 action: 'save_resource',
                 id: byId('resourceId').value,
@@ -158,7 +304,7 @@
             });
         });
 
-        byId('settingsForm').addEventListener('submit', function (e) {
+        on('settingsForm', 'submit', function (e) {
             submit(e, 'settingsResult', settingsPayload());
         });
     }

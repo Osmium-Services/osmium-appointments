@@ -14,71 +14,51 @@ $settings = $admin['settings'];
 $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 ?>
 <div class="d-flex justify-content-between align-items-center py-3 mb-4">
-    <h4 class="mb-0">
-        <img src="/assets/services/osmium-appointments/logo.png" alt="" width="28" height="28" class="me-2 align-text-bottom">Osmium Appointments
-    </h4>
+    <h4 class="mb-0"><i class="bx bx-calendar-check me-2 align-text-bottom"></i>Appointments</h4>
 </div>
+
+<div class="card mb-4" id="schedule">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0">Schedule</h5>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="scheduleToday">Today</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="schedulePrev" aria-label="Previous day"><i class="bx bx-chevron-left"></i></button>
+            <input type="date" class="form-control form-control-sm" id="scheduleDate" style="width: 10rem;">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="scheduleNext" aria-label="Next day"><i class="bx bx-chevron-right"></i></button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-3 mb-3 small text-muted">
+            <span><span class="sched-key sched-requested"></span> Waiting for you</span>
+            <span><span class="sched-key sched-confirmed"></span> Confirmed</span>
+            <span><span class="sched-key sched-break"></span> Break</span>
+            <span><span class="sched-key sched-closed"></span> Closed</span>
+        </div>
+        <div id="scheduleGrid" class="sched-scroll"></div>
+    </div>
+</div>
+<style nonce="<?= $cspNonce ?? '' ?>">
+    .sched-scroll { overflow-x: auto; }
+    .sched { display: grid; position: relative; min-width: 36rem; }
+    .sched-head { font-weight: 600; text-align: center; padding: .4rem .25rem; border-bottom: 1px solid var(--bs-border-color, #ccc); }
+    .sched-times { position: relative; }
+    .sched-time { position: absolute; right: .5rem; font-size: .75rem; color: var(--bs-secondary-color, #888); transform: translateY(-50%); }
+    .sched-col { position: relative; border-left: 1px solid var(--bs-border-color, #ccc); }
+    .sched-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--bs-border-color, #ddd); opacity: .5; }
+    .sched-shade { position: absolute; left: 0; right: 0; }
+    .sched-closed { background: repeating-linear-gradient(135deg, rgba(128,128,128,.28), rgba(128,128,128,.28) 4px, rgba(128,128,128,.12) 4px, rgba(128,128,128,.12) 8px); }
+    .sched-break { background: rgba(13, 110, 253, .22); }
+    .sched-appt { position: absolute; left: 3px; right: 3px; border-radius: .35rem; padding: .15rem .35rem; font-size: .78rem; line-height: 1.2; overflow: hidden; cursor: pointer; border: 1px solid transparent; text-align: left; z-index: 2; color: #fff; }
+    .sched-appt small { display: block; opacity: .9; }
+    .sched-requested { background: #b8860b; border-color: #e0a800; }
+    .sched-confirmed { background: #1f8f4e; border-color: #28a745; }
+    .sched-key { display: inline-block; width: .9rem; height: .9rem; border-radius: .2rem; vertical-align: -.15rem; margin-right: .25rem; }
+    .sched-key.sched-closed, .sched-key.sched-break { border: 1px solid var(--bs-border-color, #ccc); }
+    .sched-note { padding: 1rem; color: var(--bs-secondary-color, #888); }
+</style>
 
 <?= ListView::render($admin['lists']['active'], $admin['appointments'], $listContext) ?>
 <?= ListView::render($admin['lists']['deleted'], $admin['deletedAppointments'], $listContext) ?>
-
-<?= ListView::render($admin['lists']['types'], $admin['types'], $listContext) ?>
-
-<?= ListView::render($admin['lists']['resources'], $admin['resources'], $listContext) ?>
-
-<div class="card mb-4">
-    <div class="card-header"><h5 class="mb-0">Appointment rules</h5></div>
-    <div class="card-body">
-        <form id="settingsForm">
-            <p class="text-muted mb-2">Opening hours come from <a href="<?= $e($adminBasePathPhp) ?>settings/location">Company &gt; Location</a>. Each day's opening time is the most that can be booked.</p>
-            <div class="row g-2 mb-3">
-                <?php foreach ($admin['days'] as $day => $dayName): ?>
-                    <?php $open = $admin['companyHours'][$day]; $window = $settings['windows'][$day]; $break = $settings['breaks'][$day]; ?>
-                    <div class="col-12 d-flex align-items-center gap-3">
-                        <div style="width: 7rem;"><?= $e($dayName) ?></div>
-                        <div style="width: 9rem;"><?= $open === null ? '<span class="text-muted">Closed</span>' : $e($open['open'] . ' to ' . $open['close']) ?></div>
-                        <span class="text-muted">Bookable</span>
-                        <input type="time" class="form-control form-control-sm" style="width: 8rem;" id="wfrom_<?= $day ?>" value="<?= $e($window['start'] ?? '') ?>" <?= $open === null ? 'disabled' : '' ?>>
-                        <span>to</span>
-                        <input type="time" class="form-control form-control-sm" style="width: 8rem;" id="wto_<?= $day ?>" value="<?= $e($window['end'] ?? '') ?>" <?= $open === null ? 'disabled' : '' ?>>
-                        <span class="text-muted ms-3">Break</span>
-                        <input type="time" class="form-control form-control-sm" style="width: 8rem;" id="bfrom_<?= $day ?>" value="<?= $e($break['start'] ?? '') ?>" <?= $open === null ? 'disabled' : '' ?>>
-                        <span>to</span>
-                        <input type="time" class="form-control form-control-sm" style="width: 8rem;" id="bto_<?= $day ?>" value="<?= $e($break['end'] ?? '') ?>" <?= $open === null ? 'disabled' : '' ?>>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-            <div class="form-text mb-3">Leave Bookable empty to use the whole opening time, or set a narrower window (for example to keep the first and last half hour free). It can never go outside the opening hours. A break is optional.</div>
-
-            <div class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label" for="settingsNotice">Minimum notice (hours)</label>
-                    <input type="number" class="form-control" id="settingsNotice" min="0" max="720" value="<?= (int) $settings['minNoticeHours'] ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="settingsAhead">How far ahead (days)</label>
-                    <input type="number" class="form-control" id="settingsAhead" min="1" max="730" value="<?= (int) $settings['maxDaysAhead'] ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="settingsStep">Times on the</label>
-                    <select class="form-select" id="settingsStep">
-                        <?php foreach ($admin['steps'] as $step): ?>
-                            <option value="<?= (int) $step ?>" <?= $step === (int) $settings['stepMinutes'] ? 'selected' : '' ?>><?= (int) $step ?> minute marks</option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-12">
-                    <label class="form-label" for="settingsEmails">Email these addresses when a request comes in (one per line)</label>
-                    <textarea class="form-control" id="settingsEmails" rows="2"><?= $e($settings['notifyEmailsText']) ?></textarea>
-                </div>
-                <div class="col-12 d-flex align-items-center gap-3">
-                    <button type="submit" class="btn btn-outline-primary" id="settingsSaveButton">Save settings</button>
-                    <div id="settingsResult" class="alert d-none mb-0 py-2"></div>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
 
 <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -135,106 +115,16 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
     </div>
 </div>
 
-<div class="modal fade" id="typeModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="typeForm">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="typeModalTitle">Add something to book</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="typeId">
-                    <div class="mb-3">
-                        <label class="form-label" for="typeName">Name</label>
-                        <input type="text" class="form-control" id="typeName" maxlength="100" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" for="typeDescription">Description (optional)</label>
-                        <textarea class="form-control" id="typeDescription" rows="2" maxlength="255"></textarea>
-                    </div>
-                    <div class="row">
-                        <div class="col-4 mb-3">
-                            <label class="form-label" for="typeMinutes">Minutes</label>
-                            <input type="number" class="form-control" id="typeMinutes" min="5" max="720" value="60" required>
-                        </div>
-                        <div class="col-4 mb-3">
-                            <label class="form-label" for="typePrice">Price (text)</label>
-                            <input type="text" class="form-control" id="typePrice" maxlength="50" placeholder="e.g. From £25">
-                        </div>
-                        <div class="col-4 mb-3">
-                            <label class="form-label" for="typeOrder">Order</label>
-                            <input type="number" class="form-control" id="typeOrder" min="0" value="0">
-                        </div>
-                    </div>
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" id="typeEnabled" checked>
-                        <label class="form-check-label" for="typeEnabled">Customers can book this</label>
-                    </div>
-                    <div class="form-text">The price is only shown: no payment is taken.</div>
-                    <div id="typeResult" class="alert d-none mt-3"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="resourceModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="resourceForm">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="resourceModalTitle">Add someone or something</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="resourceId">
-                    <div class="row">
-                        <div class="col-8 mb-3">
-                            <label class="form-label" for="resourceName">Name</label>
-                            <input type="text" class="form-control" id="resourceName" maxlength="100" required>
-                        </div>
-                        <div class="col-4 mb-3">
-                            <label class="form-label" for="resourceOrder">Order</label>
-                            <input type="number" class="form-control" id="resourceOrder" min="0" value="0">
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label" for="resourceBreakStart">Daily break from (optional)</label>
-                            <input type="time" class="form-control" id="resourceBreakStart">
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label" for="resourceBreakEnd">to</label>
-                            <input type="time" class="form-control" id="resourceBreakEnd">
-                        </div>
-                    </div>
-                    <div class="form-text mb-3">Nothing can be booked with them during their break. Stagger breaks so the shop stays open.</div>
-                    <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" id="resourceEnabled" checked>
-                        <label class="form-check-label" for="resourceEnabled">Customers can choose this</label>
-                    </div>
-                    <div id="resourceResult" class="alert d-none"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <script nonce="<?= $cspNonce ?? '' ?>">
     window.OsmiumAppointmentsConfig = {
         basePath: adminBasePath,
         appointments: <?= \json_encode(\array_column($admin['appointments'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         types: <?= \json_encode(\array_column($admin['types'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-        resources: <?= \json_encode(\array_column($admin['resources'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
+        resources: <?= \json_encode(\array_column($admin['resources'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+        schedule: {
+            hours: <?= \json_encode($settings['hours'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+            step: <?= (int) $settings['stepMinutes'] ?>
+        }
     };
 </script>
 <script src="/assets/admin/js/list-view.js<?= $adminAssetVersion('/assets/admin/js/list-view.js') ?>"></script>

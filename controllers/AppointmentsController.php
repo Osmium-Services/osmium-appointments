@@ -38,14 +38,35 @@ class AppointmentsController extends AdminController
         $this->data['admin']['deletedAppointments'] = \array_map($this->formatDeleted(...), $appointments->listDeleted());
         $this->data['admin']['types'] = \array_map($this->formatType(...), (new AppointmentType($db))->listAll());
         $this->data['admin']['resources'] = \array_map($this->formatResource(...), (new AppointmentResource($db))->listAll());
+        $this->loadRules();
+
+        $this->setView('appointments/index.phtml');
+    }
+
+    /**
+     * The setup page (Services > Osmium Appointments): what can be booked, who or what is booked, and the rules
+     */
+    public function settings(): void
+    {
+        $db = $this->osmium->dataSource;
+
+        $this->data['admin']['isAdmin'] = $this->isAdmin();
+        $this->data['admin']['lists'] = require __DIR__ . '/../lists/appointments.php';
+        $this->data['admin']['types'] = \array_map($this->formatType(...), (new AppointmentType($db))->listAll());
+        $this->data['admin']['resources'] = \array_map($this->formatResource(...), (new AppointmentResource($db))->listAll());
+        $this->loadRules();
+        $this->data['admin']['steps'] = AppointmentConfig::STEPS;
+        $this->data['admin']['days'] = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
+
+        $this->setView('appointments/settings.phtml');
+    }
+
+    private function loadRules(): void
+    {
         $companyHours = $this->osmium->config->company->openingHours ?? null;
         $this->data['admin']['settings'] = AppointmentConfig::get(companyHours: $companyHours);
         $this->data['admin']['companyHours'] = AppointmentConfig::hoursFor(companyHours: $companyHours, breaks: []);
         $this->data['admin']['settings']['notifyEmailsText'] = \implode("\n", $this->data['admin']['settings']['notifyEmails']);
-        $this->data['admin']['steps'] = AppointmentConfig::STEPS;
-        $this->data['admin']['days'] = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
-
-        $this->setView('appointments/index.phtml');
     }
 
     public function action()
@@ -382,6 +403,8 @@ class AppointmentsController extends AdminController
             'resourceName' => $row['resource_name'] ?? '',
             'typeId' => (int) $row['type_id'],
             'resourceId' => $row['resource_id'] !== null ? (int) $row['resource_id'] : '',
+            'customerName' => (string) $row['customer_name'],
+            'endTime' => (new \DateTimeImmutable($row['ends_at']))->format('H:i'),
             'date' => $start->format('Y-m-d'),
             'time' => $start->format('H:i'),
             'customerNotes' => $row['customer_notes'] ?? '',

@@ -2,7 +2,11 @@
 
 Appointment requests for any kind of business. A customer asks for a time, you confirm or decline, and they are emailed each step. Appointments are stored locally; other services (for example a calendar sync) can react to the `appointment.*` hooks.
 
-## Setup (admin > Osmium Appointments)
+## Day to day (admin > Appointments)
+
+A **Schedule** for one day at a time, with a column for each person, room or item (or one column if there are none): waiting requests and confirmed appointments as blocks at their time and length, breaks and closed hours shaded, and day arrows. Click a block to confirm, move, reassign or cancel it. Below it, the list of appointments with the Deleted bin.
+
+## Setup (admin > Services > Osmium Appointments)
 
 - **What can be booked**: name, length in minutes, optional price text (shown only, no payment).
 - **Who or what is booked**: optional people, rooms or equipment, each with an optional daily break (a person's lunch; stagger them so the shop stays open). Clashes are checked per one. A "no preference" request is given to the first person who is free and not on break, spreading waiting requests across the team; with no people set up, the business is one lane. When the time asked for is taken the customer is told who else is free then and the nearest earlier and later times that would work that day.
