@@ -5,8 +5,8 @@ declare(strict_types=1);
 use Osmium\Modules\Admin\Core\ListView;
 
 /**
- * Bookings lists, rendered by Osmium\Modules\Admin\Core\ListView. Row fields are prepared by
- * BookingsController::formatBooking(), formatType(), formatResource() and formatDeleted().
+ * Appointments lists, rendered by Osmium\Modules\Admin\Core\ListView. Row fields are prepared by
+ * AppointmentsController::formatAppointment(), formatType(), formatResource() and formatDeleted().
  */
 require_once 'app/core/admin/services/ChangedByCell.php';
 
@@ -14,12 +14,12 @@ $changedByColumn = ['key' => 'changed_by', 'label' => '', 'type' => 'html', 'sor
 
 return [
     'active' => [
-        'id' => 'osmium-bookings',
-        'title' => 'Bookings',
-        'noun' => ['booking', 'bookings'],
-        'endpoint' => 'bookings/action/',
+        'id' => 'osmium-appointments',
+        'title' => 'Appointments',
+        'noun' => ['appointment', 'appointments'],
+        'endpoint' => 'appointments/action/',
         'note' => 'Requests wait at the top until you confirm or decline them. The customer is emailed each time.',
-        'emptyText' => 'No bookings yet.',
+        'emptyText' => 'No appointments yet.',
         'order' => null, // Server order: requests first, then latest time first
         'columns' => [
             ['key' => 'statusBadge', 'label' => 'Status', 'type' => 'raw', 'nowrap' => true],
@@ -45,48 +45,48 @@ return [
             ],
             ['label' => 'Edit', 'icon' => 'bx-edit-alt', 'event' => 'edit'],
             [
-                'label' => 'Cancel booking',
+                'label' => 'Cancel appointment',
                 'icon' => 'bx-calendar-x',
                 'action' => 'cancel',
-                'confirm' => 'Cancel this booking? The customer will be emailed.',
+                'confirm' => 'Cancel this appointment? The customer will be emailed.',
                 'visible' => fn(array $row, array $context): bool => \in_array($row['status'], ['requested', 'confirmed'], true),
             ],
             [
                 'label' => 'Delete',
                 'icon' => 'bx-trash',
                 'action' => 'delete',
-                'confirm' => 'Delete this booking? It can be restored from Deleted Bookings. The customer is not emailed.',
+                'confirm' => 'Delete this appointment? It can be restored from Deleted Appointments. The customer is not emailed.',
                 'danger' => true,
             ],
         ],
     ],
 
     'deleted' => ListView::deletedPreset([
-        'id' => 'osmium-bookings-deleted',
-        'title' => 'Deleted Bookings',
+        'id' => 'osmium-appointments-deleted',
+        'title' => 'Deleted Appointments',
         'noun' => ['item', 'items'],
-        'endpoint' => 'bookings/action/',
+        'endpoint' => 'appointments/action/',
         'hideWhenEmpty' => false,
         'headerButton' => [
             'label' => 'Purge All',
             'icon' => 'bx-trash',
             'class' => 'btn-outline-danger',
             'action' => 'purge_deleted',
-            'confirm' => 'Permanently delete all deleted bookings? This cannot be undone!',
+            'confirm' => 'Permanently delete all deleted appointments? This cannot be undone!',
             'visible' => fn(array $rows, array $context): bool => (bool) $context['isAdmin'],
         ],
         'columns' => [
             $changedByColumn,
-            ['key' => 'name', 'label' => 'Booking', 'type' => 'text', 'strong' => true, 'fill' => true],
+            ['key' => 'name', 'label' => 'Appointment', 'type' => 'text', 'strong' => true, 'fill' => true],
             ['key' => 'deletedDate', 'label' => 'Deleted', 'type' => 'text', 'small' => true, 'nowrap' => true],
         ],
     ]),
 
     'types' => [
-        'id' => 'osmium-bookings-types',
+        'id' => 'osmium-appointments-types',
         'title' => 'What can be booked',
         'noun' => ['type', 'types'],
-        'endpoint' => 'bookings/action/',
+        'endpoint' => 'appointments/action/',
         'emptyText' => 'Nothing to book yet - use Add to create the first.',
         'headerButton' => ['label' => 'Add', 'icon' => 'bx-plus', 'class' => 'btn-primary btn-sm', 'event' => 'add-type'],
         'order' => null,
@@ -102,19 +102,19 @@ return [
                 'label' => 'Delete',
                 'icon' => 'bx-trash',
                 'action' => 'delete_type',
-                'confirm' => 'Delete this? (Not possible once a booking uses it: turn it off instead.)',
+                'confirm' => 'Delete this? (Not possible once an appointment uses it: turn it off instead.)',
                 'danger' => true,
             ],
         ],
     ],
 
     'resources' => [
-        'id' => 'osmium-bookings-resources',
+        'id' => 'osmium-appointments-resources',
         'title' => 'Who or what is booked',
         'noun' => ['one', 'ones'],
-        'endpoint' => 'bookings/action/',
+        'endpoint' => 'appointments/action/',
         'subtitle' => 'Optional: people, rooms or equipment. With none, customers simply book the business.',
-        'emptyText' => 'None - bookings are for the business as a whole.',
+        'emptyText' => 'None - appointments are for the business as a whole.',
         'headerButton' => ['label' => 'Add', 'icon' => 'bx-plus', 'class' => 'btn-primary btn-sm', 'event' => 'add-resource'],
         'order' => null,
         'columns' => [
@@ -127,7 +127,7 @@ return [
                 'label' => 'Delete',
                 'icon' => 'bx-trash',
                 'action' => 'delete_resource',
-                'confirm' => 'Delete this? (Not possible once a booking uses it: turn it off instead.)',
+                'confirm' => 'Delete this? (Not possible once an appointment uses it: turn it off instead.)',
                 'danger' => true,
             ],
         ],

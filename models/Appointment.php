@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 use Osmium\Core\Library\OsmiumPDO;
 use Osmium\Core\Models\Model;
 
 /**
- * The bookings: a customer's request and what the business did with it. Soft-deleted first, removed for good from the bin.
+ * The appointments: a customer's request and what the business did with it. Soft-deleted first, removed for good from the bin.
  */
-class Booking extends Model
+class Appointment extends Model
 {
     public const STATUSES = ['requested', 'confirmed', 'declined', 'cancelled'];
 
@@ -18,23 +18,23 @@ class Booking extends Model
 
     public function __construct(OsmiumPDO $database)
     {
-        parent::__construct(database: $database, tableName: 'bookings');
+        parent::__construct(database: $database, tableName: 'appointments');
     }
 
-    /** Every booking not in the bin, requests first, then newest time first, with its type and person */
+    /** Every appointment not in the bin, requests first, then newest time first, with its type and person */
     public function listAll(): array
     {
-        return $this->rows('booking-list.sql');
+        return $this->rows('appointment-list.sql');
     }
 
     public function listDeleted(): array
     {
-        return $this->rows('booking-list-deleted.sql');
+        return $this->rows('appointment-list-deleted.sql');
     }
 
     public function countRequested(): int
     {
-        $this->database->query($this->loadSqlFile('booking-count-requested.sql'));
+        $this->database->query($this->loadSqlFile('appointment-count-requested.sql'));
         $row = $this->database->single();
 
         return (int) ($row['total'] ?? 0);
@@ -42,12 +42,12 @@ class Booking extends Model
 
     public function get(int $id): ?array
     {
-        return $this->one(file: 'booking-get.sql', param: ':id', value: $id);
+        return $this->one(file: 'appointment-get.sql', param: ':id', value: $id);
     }
 
     public function getByReference(string $reference): ?array
     {
-        return $this->one(file: 'booking-get-by-reference.sql', param: ':reference', value: $reference);
+        return $this->one(file: 'appointment-get-by-reference.sql', param: ':reference', value: $reference);
     }
 
     /**
@@ -58,7 +58,7 @@ class Booking extends Model
     {
         $reference = $this->newReference();
 
-        $this->database->query($this->loadSqlFile('booking-insert.sql'));
+        $this->database->query($this->loadSqlFile('appointment-insert.sql'));
         $this->database->bind(param: ':reference', value: $reference);
         $this->database->bind(param: ':type_id', value: $request['typeId']);
         $this->database->bind(param: ':resource_id', value: $request['resourceId']);
@@ -75,7 +75,7 @@ class Booking extends Model
 
     public function reschedule(int $id, int $typeId, ?int $resourceId, string $startsAt, string $endsAt, ?string $adminNotes, int $sequence): void
     {
-        $this->database->query($this->loadSqlFile('booking-reschedule.sql'));
+        $this->database->query($this->loadSqlFile('appointment-reschedule.sql'));
         $this->database->bind(param: ':id', value: $id);
         $this->database->bind(param: ':type_id', value: $typeId);
         $this->database->bind(param: ':resource_id', value: $resourceId);
@@ -88,7 +88,7 @@ class Booking extends Model
 
     public function setStatus(int $id, string $status, int $sequence): void
     {
-        $this->database->query($this->loadSqlFile('booking-set-status.sql'));
+        $this->database->query($this->loadSqlFile('appointment-set-status.sql'));
         $this->database->bind(param: ':id', value: $id);
         $this->database->bind(param: ':status', value: $status);
         $this->database->bind(param: ':ics_sequence', value: $sequence);
@@ -96,36 +96,36 @@ class Booking extends Model
     }
 
     /**
-     * What other services have stored against the booking, such as a calendar event id: service id => value.
+     * What other services have stored against the appointment, such as a calendar event id: service id => value.
      * Each service keeps to its own key, so one can never overwrite another's.
      *
      * @return array<string, mixed>
      */
-    public static function externalRefs(array $booking): array
+    public static function externalRefs(array $appointment): array
     {
-        $decoded = \json_decode((string) ($booking['external_refs'] ?? ''), associative: true);
+        $decoded = \json_decode((string) ($appointment['external_refs'] ?? ''), associative: true);
 
         return \is_array($decoded) ? $decoded : [];
     }
 
     public function setExternalRef(int $id, string $serviceId, mixed $value): void
     {
-        $booking = $this->get($id);
-        if ($booking === null) return;
+        $appointment = $this->get($id);
+        if ($appointment === null) return;
 
-        $refs = self::externalRefs($booking);
+        $refs = self::externalRefs($appointment);
         $refs[$serviceId] = $value;
 
-        $this->database->query($this->loadSqlFile('booking-set-refs.sql'));
+        $this->database->query($this->loadSqlFile('appointment-set-refs.sql'));
         $this->database->bind(param: ':id', value: $id);
         $this->database->bind(param: ':external_refs', value: \json_encode($refs));
         $this->database->execute();
     }
 
-    /** A confirmed booking that clashes with this time for the same person (or with no person), other than the booking itself */
+    /** A confirmed appointment that clashes with this time for the same person (or with no person), other than the appointment itself */
     public function findOverlap(int $excludeId, ?int $resourceId, string $startsAt, string $endsAt): ?array
     {
-        $this->database->query($this->loadSqlFile('booking-overlapping.sql'));
+        $this->database->query($this->loadSqlFile('appointment-overlapping.sql'));
         $this->database->bind(param: ':id', value: $excludeId);
         $this->database->bind(param: ':no_resource', value: $resourceId === null ? 1 : 0);
         $this->database->bind(param: ':resource_id', value: $resourceId);
@@ -139,7 +139,7 @@ class Booking extends Model
     /** The same person asking for the same thing at the same time twice */
     public function isDuplicate(string $email, string $startsAt, int $typeId): bool
     {
-        $this->database->query($this->loadSqlFile('booking-duplicate.sql'));
+        $this->database->query($this->loadSqlFile('appointment-duplicate.sql'));
         $this->database->bind(param: ':email', value: $email);
         $this->database->bind(param: ':starts_at', value: $startsAt);
         $this->database->bind(param: ':type_id', value: $typeId);
@@ -149,29 +149,29 @@ class Booking extends Model
 
     public function softDelete(int $id): void
     {
-        $this->run(file: 'booking-soft-delete.sql', id: $id);
+        $this->run(file: 'appointment-soft-delete.sql', id: $id);
     }
 
     public function restore(int $id): void
     {
-        $this->run(file: 'booking-restore.sql', id: $id);
+        $this->run(file: 'appointment-restore.sql', id: $id);
     }
 
     public function hardDelete(int $id): void
     {
-        $this->run(file: 'booking-hard-delete.sql', id: $id);
+        $this->run(file: 'appointment-hard-delete.sql', id: $id);
     }
 
-    /** @return int How many bookings were removed */
+    /** @return int How many appointments were removed */
     public function purgeDeleted(): int
     {
-        $this->database->query($this->loadSqlFile('booking-purge-deleted.sql'));
+        $this->database->query($this->loadSqlFile('appointment-purge-deleted.sql'));
         $this->database->execute();
 
         return $this->database->rowCount();
     }
 
-    /** Ten characters from letters and digits that are hard to misread, unique among bookings */
+    /** Ten characters from letters and digits that are hard to misread, unique among appointments */
     private function newReference(): string
     {
         $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -180,7 +180,7 @@ class Booking extends Model
             for ($i = 0; $i < 10; $i++) {
                 $reference .= $alphabet[\random_int(0, \strlen($alphabet) - 1)];
             }
-            $this->database->query($this->loadSqlFile('booking-reference-taken.sql'));
+            $this->database->query($this->loadSqlFile('appointment-reference-taken.sql'));
             $this->database->bind(param: ':reference', value: $reference);
             $taken = (bool) $this->database->single();
         } while ($taken);

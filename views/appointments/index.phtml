@@ -15,19 +15,19 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 ?>
 <div class="d-flex justify-content-between align-items-center py-3 mb-4">
     <h4 class="mb-0">
-        <img src="/assets/services/osmium-bookings/logo.png" alt="" width="28" height="28" class="me-2 align-text-bottom">Osmium Bookings
+        <img src="/assets/services/osmium-appointments/logo.png" alt="" width="28" height="28" class="me-2 align-text-bottom">Osmium Appointments
     </h4>
 </div>
 
-<?= ListView::render($admin['lists']['active'], $admin['bookings'], $listContext) ?>
-<?= ListView::render($admin['lists']['deleted'], $admin['deletedBookings'], $listContext) ?>
+<?= ListView::render($admin['lists']['active'], $admin['appointments'], $listContext) ?>
+<?= ListView::render($admin['lists']['deleted'], $admin['deletedAppointments'], $listContext) ?>
 
 <?= ListView::render($admin['lists']['types'], $admin['types'], $listContext) ?>
 
 <?= ListView::render($admin['lists']['resources'], $admin['resources'], $listContext) ?>
 
 <div class="card mb-4">
-    <div class="card-header"><h5 class="mb-0">Booking rules</h5></div>
+    <div class="card-header"><h5 class="mb-0">Appointment rules</h5></div>
     <div class="card-body">
         <form id="settingsForm">
             <p class="text-muted mb-2">Opening hours come from <a href="<?= $e($adminBasePathPhp) ?>settings/location">Company &gt; Location</a>. Each day's opening time is the most that can be booked.</p>
@@ -80,30 +80,30 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
     </div>
 </div>
 
-<div class="modal fade" id="bookingModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form id="bookingForm">
+            <form id="appointmentForm">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="bookingModalTitle">Edit booking</h5>
+                    <h5 class="modal-title" id="appointmentModalTitle">Edit appointment</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <input type="hidden" id="bookingId">
-                    <p class="mb-3" id="bookingWho"></p>
-                    <p class="mb-3 text-muted" id="bookingTheirNotes"></p>
+                    <input type="hidden" id="appointmentId">
+                    <p class="mb-3" id="appointmentWho"></p>
+                    <p class="mb-3 text-muted" id="appointmentTheirNotes"></p>
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label class="form-label" for="bookingType">What</label>
-                            <select class="form-select" id="bookingType">
+                            <label class="form-label" for="appointmentType">What</label>
+                            <select class="form-select" id="appointmentType">
                                 <?php foreach ($admin['types'] as $type): ?>
                                     <option value="<?= (int) $type['id'] ?>"><?= $e($type['name']) ?> (<?= (int) $type['minutes'] ?> min)</option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label" for="bookingResource">With</label>
-                            <select class="form-select" id="bookingResource">
+                            <label class="form-label" for="appointmentResource">With</label>
+                            <select class="form-select" id="appointmentResource">
                                 <option value="0">No one in particular</option>
                                 <?php foreach ($admin['resources'] as $resource): ?>
                                     <option value="<?= (int) $resource['id'] ?>"><?= $e($resource['name']) ?></option>
@@ -111,24 +111,24 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
                             </select>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label" for="bookingDate">Date</label>
-                            <input type="date" class="form-control" id="bookingDate" required>
+                            <label class="form-label" for="appointmentDate">Date</label>
+                            <input type="date" class="form-control" id="appointmentDate" required>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label" for="bookingTime">Time</label>
-                            <input type="time" class="form-control" id="bookingTime" required>
+                            <label class="form-label" for="appointmentTime">Time</label>
+                            <input type="time" class="form-control" id="appointmentTime" required>
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="bookingNotes">Your notes (never shown to the customer)</label>
-                        <textarea class="form-control" id="bookingNotes" rows="2"></textarea>
+                        <label class="form-label" for="appointmentNotes">Your notes (never shown to the customer)</label>
+                        <textarea class="form-control" id="appointmentNotes" rows="2"></textarea>
                     </div>
-                    <div class="form-text">Changing the time of a confirmed booking emails the customer the new time.</div>
-                    <div id="bookingResult" class="alert d-none mt-3"></div>
+                    <div class="form-text">Changing the time of a confirmed appointment emails the customer the new time.</div>
+                    <div id="appointmentResult" class="alert d-none mt-3"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="bookingSaveButton">Save</button>
+                    <button type="submit" class="btn btn-primary" id="appointmentSaveButton">Save</button>
                 </div>
             </form>
         </div>
@@ -219,12 +219,12 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
 </div>
 
 <script nonce="<?= $cspNonce ?? '' ?>">
-    window.OsmiumBookingsConfig = {
+    window.OsmiumAppointmentsConfig = {
         basePath: adminBasePath,
-        bookings: <?= \json_encode(\array_column($admin['bookings'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
+        appointments: <?= \json_encode(\array_column($admin['appointments'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         types: <?= \json_encode(\array_column($admin['types'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
         resources: <?= \json_encode(\array_column($admin['resources'], null, 'id'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>
     };
 </script>
 <script src="/assets/admin/js/list-view.js<?= $adminAssetVersion('/assets/admin/js/list-view.js') ?>"></script>
-<script src="/assets/services/osmium-bookings/bookings.js<?= $adminAssetVersion('/assets/services/osmium-bookings/bookings.js') ?>"></script>
+<script src="/assets/services/osmium-appointments/appointments.js<?= $adminAssetVersion('/assets/services/osmium-appointments/appointments.js') ?>"></script>

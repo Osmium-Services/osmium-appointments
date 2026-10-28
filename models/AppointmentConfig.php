@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
- * The site-wide booking rules. Opening hours are not kept here: they come from Company > Location
- * (company.openingHours). This service's own settings file (app/config/services/osmium-bookings.json.php) holds an
+ * The site-wide appointment rules. Opening hours are not kept here: they come from Company > Location
+ * (company.openingHours). This service's own settings file (app/config/services/osmium-appointments.json.php) holds an
  * optional break for each weekday (such as lunch), the notice a request needs, how far ahead it may be, the step times
  * snap to, an optional narrower bookable window for each weekday, and who is emailed when a request comes in.
  */
-class BookingConfig
+class AppointmentConfig
 {
-    public const PATH = 'app/config/services/osmium-bookings.json.php';
+    public const PATH = 'app/config/services/osmium-appointments.json.php';
     public const STEPS = [5, 10, 15, 20, 30, 60];
     public const DAY_NAMES = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
 
@@ -62,7 +62,7 @@ class BookingConfig
         if ($noJsonFound) return $defaults;
 
         $decoded = \json_decode(\substr(string: $content, offset: $jsonStart), associative: true);
-        $saved = \is_array($decoded) ? ($decoded['bookings'] ?? []) : [];
+        $saved = \is_array($decoded) ? ($decoded['appointments'] ?? []) : [];
         if (!\is_array($saved)) return $defaults;
 
         $breaks = $defaults['breaks'];
@@ -125,7 +125,7 @@ class BookingConfig
         $dirMissing = !\is_dir($dir);
         if ($dirMissing) \mkdir(directory: $dir, permissions: 0755, recursive: true);
 
-        $json = \json_encode(value: ['bookings' => $clean], flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $json = \json_encode(value: ['appointments' => $clean], flags: JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         \file_put_contents($path, "<?php exit(); ?>\n" . $json . "\n");
 
         return $clean;

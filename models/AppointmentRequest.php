@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
  * Turns the public form's fields into a clean request, or refuses with a message to show the customer.
  * Whether the type, person and time exist and fit the opening hours is checked later, against the database.
  */
-class BookingRequest
+class AppointmentRequest
 {
     public const TECHNICAL_PROBLEM = 'Sorry, something went wrong. Please try again.';
 

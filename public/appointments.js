@@ -1,8 +1,8 @@
 (function () {
     'use strict';
 
-    const config = window.OsmiumBookingsConfig || {};
-    const actionUrl = config.basePath + 'bookings/action/';
+    const config = window.OsmiumAppointmentsConfig || {};
+    const actionUrl = config.basePath + 'appointments/action/';
 
     function byId(id) {
         return document.getElementById(id);
@@ -52,17 +52,17 @@
         new bootstrap.Modal(byId(id)).show();
     }
 
-    function openBooking(booking) {
-        clear('bookingResult');
-        byId('bookingId').value = booking.id;
-        byId('bookingWho').textContent = booking.reference + ' (' + booking.status + ')';
-        byId('bookingTheirNotes').textContent = booking.customerNotes ? 'They wrote: ' + booking.customerNotes : '';
-        byId('bookingType').value = booking.typeId;
-        byId('bookingResource').value = booking.resourceId === '' ? '0' : booking.resourceId;
-        byId('bookingDate').value = booking.date;
-        byId('bookingTime').value = booking.time;
-        byId('bookingNotes').value = booking.adminNotes;
-        openModal('bookingModal');
+    function openAppointment(appointment) {
+        clear('appointmentResult');
+        byId('appointmentId').value = appointment.id;
+        byId('appointmentWho').textContent = appointment.reference + ' (' + appointment.status + ')';
+        byId('appointmentTheirNotes').textContent = appointment.customerNotes ? 'They wrote: ' + appointment.customerNotes : '';
+        byId('appointmentType').value = appointment.typeId;
+        byId('appointmentResource').value = appointment.resourceId === '' ? '0' : appointment.resourceId;
+        byId('appointmentDate').value = appointment.date;
+        byId('appointmentTime').value = appointment.time;
+        byId('appointmentNotes').value = appointment.adminNotes;
+        openModal('appointmentModal');
     }
 
     function openType(type) {
@@ -112,22 +112,22 @@
     function init() {
         // Row actions come from the ListViews; each Edit fires list:action with its own event name and the row's id
         document.addEventListener('list:action', function (e) {
-            if (e.detail.action === 'edit') openBooking(config.bookings[e.detail.id]);
+            if (e.detail.action === 'edit') openAppointment(config.appointments[e.detail.id]);
             if (e.detail.action === 'add-type') openType(null);
             if (e.detail.action === 'add-resource') openResource(null);
             if (e.detail.action === 'edit-type') openType(config.types[e.detail.id]);
             if (e.detail.action === 'edit-resource') openResource(config.resources[e.detail.id]);
         });
 
-        byId('bookingForm').addEventListener('submit', function (e) {
-            submit(e, 'bookingResult', {
+        byId('appointmentForm').addEventListener('submit', function (e) {
+            submit(e, 'appointmentResult', {
                 action: 'reschedule',
-                id: byId('bookingId').value,
-                type_id: byId('bookingType').value,
-                resource_id: byId('bookingResource').value,
-                date: byId('bookingDate').value,
-                time: byId('bookingTime').value,
-                admin_notes: byId('bookingNotes').value
+                id: byId('appointmentId').value,
+                type_id: byId('appointmentType').value,
+                resource_id: byId('appointmentResource').value,
+                date: byId('appointmentDate').value,
+                time: byId('appointmentTime').value,
+                admin_notes: byId('appointmentNotes').value
             });
         });
 

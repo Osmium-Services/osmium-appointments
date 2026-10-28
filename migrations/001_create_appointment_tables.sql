@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `{PREFIX}booking_types` (
+CREATE TABLE IF NOT EXISTS `{PREFIX}appointment_types` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -9,10 +9,10 @@ CREATE TABLE IF NOT EXISTS `{PREFIX}booking_types` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_booking_types_order` (`enabled`,`sort_order`)
+  KEY `idx_appointment_types_order` (`enabled`,`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `{PREFIX}booking_resources` (
+CREATE TABLE IF NOT EXISTS `{PREFIX}appointment_resources` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `enabled` tinyint(1) NOT NULL DEFAULT '1',
@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS `{PREFIX}booking_resources` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_booking_resources_order` (`enabled`,`sort_order`)
+  KEY `idx_appointment_resources_order` (`enabled`,`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `{PREFIX}bookings` (
+CREATE TABLE IF NOT EXISTS `{PREFIX}appointments` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
   `reference` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `type_id` int unsigned NOT NULL,
@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS `{PREFIX}bookings` (
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_bookings_reference` (`reference`),
-  KEY `idx_bookings_status_start` (`status`,`starts_at`),
-  KEY `idx_bookings_resource_start` (`resource_id`,`starts_at`),
-  KEY `idx_bookings_deleted` (`deleted_at`)
+  UNIQUE KEY `uniq_appointments_reference` (`reference`),
+  KEY `idx_appointments_status_start` (`status`,`starts_at`),
+  KEY `idx_appointments_resource_start` (`resource_id`,`starts_at`),
+  KEY `idx_appointments_deleted` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

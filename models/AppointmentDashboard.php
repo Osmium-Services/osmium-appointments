@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
  * The dashboard card: how many requests are waiting for an answer, and the first few.
  */
-class BookingDashboard
+class AppointmentDashboard
 {
     /**
      * @param array{osmium: object, role?: string} $payload
@@ -15,7 +15,7 @@ class BookingDashboard
      */
     public static function widget(array $payload): array
     {
-        $model = new Booking($payload['osmium']->dataSource);
+        $model = new Appointment($payload['osmium']->dataSource);
         $waiting = \array_values(\array_filter($model->listAll(), static fn(array $row): bool => $row['status'] === 'requested'));
 
         $lines = [];
@@ -23,18 +23,18 @@ class BookingDashboard
             $lines[] = [
                 'text' => (string) $row['customer_name'] . ', ' . (string) $row['type_name'],
                 'sub' => (new \DateTimeImmutable($row['starts_at']))->format('D j M, H:i'),
-                'route' => 'bookings',
+                'route' => 'appointments',
             ];
         }
 
         return [
-            'id' => 'osmium-bookings',
-            'title' => 'Booking requests',
+            'id' => 'osmium-appointments',
+            'title' => 'Appointment requests',
             'icon' => 'bx-calendar-check',
             'roles' => ['admin'],
             'order' => 20,
             'count' => \count($waiting),
-            'link' => ['label' => 'Open bookings', 'route' => 'bookings'],
+            'link' => ['label' => 'Open appointments', 'route' => 'appointments'],
             'lines' => $lines,
             'emptyText' => 'No requests waiting.',
         ];

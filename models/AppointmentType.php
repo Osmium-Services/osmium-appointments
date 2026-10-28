@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 use Osmium\Core\Library\OsmiumPDO;
 use Osmium\Core\Models\Model;
@@ -10,25 +10,25 @@ use Osmium\Core\Models\Model;
 /**
  * What can be booked: a name, a length and an optional price shown as text (no payment is taken).
  */
-class BookingType extends Model
+class AppointmentType extends Model
 {
     protected ?string $sqlDir = __DIR__ . '/sql';
 
     public function __construct(OsmiumPDO $database)
     {
-        parent::__construct(database: $database, tableName: 'booking_types');
+        parent::__construct(database: $database, tableName: 'appointment_types');
     }
 
     public function listAll(): array
     {
-        $this->database->query($this->loadSqlFile('booking-type-list.sql'));
+        $this->database->query($this->loadSqlFile('appointment-type-list.sql'));
 
         return $this->database->resultset();
     }
 
     public function get(int $id): ?array
     {
-        $this->database->query($this->loadSqlFile('booking-type-get.sql'));
+        $this->database->query($this->loadSqlFile('appointment-type-get.sql'));
         $this->database->bind(param: ':id', value: $id);
         $result = $this->database->single();
 
@@ -40,7 +40,7 @@ class BookingType extends Model
      */
     public function create(array $details): int
     {
-        $this->database->query($this->loadSqlFile('booking-type-save-insert.sql'));
+        $this->database->query($this->loadSqlFile('appointment-type-save-insert.sql'));
         $this->bindDetails($details);
         $this->database->execute();
 
@@ -52,7 +52,7 @@ class BookingType extends Model
      */
     public function update(int $id, array $details): void
     {
-        $this->database->query($this->loadSqlFile('booking-type-save-update.sql'));
+        $this->database->query($this->loadSqlFile('appointment-type-save-update.sql'));
         $this->database->bind(param: ':id', value: $id);
         $this->bindDetails($details);
         $this->database->execute();
@@ -60,7 +60,7 @@ class BookingType extends Model
 
     public function delete(int $id): void
     {
-        $this->database->query($this->loadSqlFile('booking-type-delete.sql'));
+        $this->database->query($this->loadSqlFile('appointment-type-delete.sql'));
         $this->database->bind(param: ':id', value: $id);
         $this->database->execute();
     }

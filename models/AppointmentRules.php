@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
  * Whether a requested time is one the business can take, from its opening hours, notice, how-far-ahead and step.
  * Pure: it is given the settings and "now", so it can be tested on its own.
  */
-class BookingRules
+class AppointmentRules
 {
     /**
      * @param array{hours: array<int, array{open: string, close: string}|null>, minNoticeHours: int, maxDaysAhead: int, stepMinutes: int} $config
@@ -27,7 +27,7 @@ class BookingRules
         if ($tooSoon) throw new \InvalidArgumentException('Please allow at least ' . self::hoursText($config['minNoticeHours']) . ' notice');
 
         $tooFar = $start > $now->modify('+' . $config['maxDaysAhead'] . ' days');
-        if ($tooFar) throw new \InvalidArgumentException('Bookings can be requested up to ' . $config['maxDaysAhead'] . ' days ahead');
+        if ($tooFar) throw new \InvalidArgumentException('Appointments can be requested up to ' . $config['maxDaysAhead'] . ' days ahead');
 
         $minutes = (int) $start->format('H') * 60 + (int) $start->format('i');
         $offStep = $minutes % $config['stepMinutes'] !== 0;
@@ -41,7 +41,7 @@ class BookingRules
 
         $sameDay = $end->format('Y-m-d') === $start->format('Y-m-d');
         $outsideHours = !$sameDay || $start->format('H:i') < $firstTime || $end->format('H:i') > $lastTime;
-        if ($outsideHours) throw new \InvalidArgumentException('That time is outside our booking hours on ' . $start->format('l') . 's (' . $firstTime . ' to ' . $lastTime . ')');
+        if ($outsideHours) throw new \InvalidArgumentException('That time is outside our appointment hours on ' . $start->format('l') . 's (' . $firstTime . ' to ' . $lastTime . ')');
 
         $breakStart = $hours['breakStart'] ?? null;
         $breakEnd = $hours['breakEnd'] ?? null;
@@ -52,7 +52,7 @@ class BookingRules
         return ['startsAt' => $start->format('Y-m-d H:i:s'), 'endsAt' => $end->format('Y-m-d H:i:s')];
     }
 
-    /** Two bookings overlap when each starts before the other ends; touching ends are fine */
+    /** Two appointments overlap when each starts before the other ends; touching ends are fine */
     public static function overlaps(string $startA, string $endA, string $startB, string $endB): bool
     {
         return $startA < $endB && $startB < $endA;

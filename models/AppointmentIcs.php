@@ -2,36 +2,36 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
- * The calendar side of a confirmed booking: an .ics file a customer can open in any calendar, and an "add to Google
+ * The calendar side of a confirmed appointment: an .ics file a customer can open in any calendar, and an "add to Google
  * Calendar" link. Pure, so it can be tested on its own. Times are written in UTC.
  *
- * The same booking always gets the same UID. A changed booking carries a higher SEQUENCE, and a cancelled one is
+ * The same appointment always gets the same UID. A changed appointment carries a higher SEQUENCE, and a cancelled one is
  * marked CANCELLED, which is how calendars know it replaces the earlier copy.
  */
-class BookingIcs
+class AppointmentIcs
 {
     /**
-     * @param array{reference: string, starts_at: string, ends_at: string, status: string, ics_sequence: int|string} $booking
+     * @param array{reference: string, starts_at: string, ends_at: string, status: string, ics_sequence: int|string} $appointment
      * @param string $summary The event title, such as "Haircut at Acme Salon"
      */
-    public static function build(array $booking, string $summary, string $description, string $host, \DateTimeImmutable $stamp): string
+    public static function build(array $appointment, string $summary, string $description, string $host, \DateTimeImmutable $stamp): string
     {
-        $cancelled = $booking['status'] === 'cancelled';
+        $cancelled = $appointment['status'] === 'cancelled';
         $lines = [
             'BEGIN:VCALENDAR',
             'VERSION:2.0',
-            'PRODID:-//Osmium//Bookings//EN',
+            'PRODID:-//Osmium//Appointments//EN',
             'CALSCALE:GREGORIAN',
             $cancelled ? 'METHOD:CANCEL' : 'METHOD:PUBLISH',
             'BEGIN:VEVENT',
-            'UID:' . $booking['reference'] . '@' . $host,
+            'UID:' . $appointment['reference'] . '@' . $host,
             'DTSTAMP:' . self::utc($stamp->format('Y-m-d H:i:s'), $stamp->getTimezone()),
-            'DTSTART:' . self::utc($booking['starts_at'], $stamp->getTimezone()),
-            'DTEND:' . self::utc($booking['ends_at'], $stamp->getTimezone()),
-            'SEQUENCE:' . (int) $booking['ics_sequence'],
+            'DTSTART:' . self::utc($appointment['starts_at'], $stamp->getTimezone()),
+            'DTEND:' . self::utc($appointment['ends_at'], $stamp->getTimezone()),
+            'SEQUENCE:' . (int) $appointment['ics_sequence'],
             'STATUS:' . ($cancelled ? 'CANCELLED' : 'CONFIRMED'),
             'SUMMARY:' . self::escape($summary),
             'DESCRIPTION:' . self::escape($description),
@@ -43,12 +43,12 @@ class BookingIcs
     }
 
     /** A link that opens Google Calendar with the event filled in, ready to save: no API and no sign-in on our side */
-    public static function googleLink(array $booking, string $summary, string $description, \DateTimeZone $zone): string
+    public static function googleLink(array $appointment, string $summary, string $description, \DateTimeZone $zone): string
     {
         $query = \http_build_query([
             'action' => 'TEMPLATE',
             'text' => $summary,
-            'dates' => self::utc($booking['starts_at'], $zone) . '/' . self::utc($booking['ends_at'], $zone),
+            'dates' => self::utc($appointment['starts_at'], $zone) . '/' . self::utc($appointment['ends_at'], $zone),
             'details' => $description,
         ], '', '&', PHP_QUERY_RFC3986);
 

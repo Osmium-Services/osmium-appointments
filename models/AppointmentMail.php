@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Models;
+namespace Osmium\Services\OsmiumAppointments\Models;
 
 /**
- * The words of every email a booking sends. Free of the database and the mailer, so they can be tested on their own.
+ * The words of every email an appointment sends. Free of the database and the mailer, so they can be tested on their own.
  * Each method returns the subject and the HTML body.
  */
-class BookingMail
+class AppointmentMail
 {
     /**
-     * @param array<string, mixed> $booking A booking row with type_name and resource_name
+     * @param array<string, mixed> $appointment An appointment row with type_name and resource_name
      * @return array{subject: string, html: string}
      */
-    public static function received(array $booking, string $siteName): array
+    public static function received(array $appointment, string $siteName): array
     {
         return self::compose(
             siteName: $siteName,
-            subject: 'We have your booking request',
-            heading: 'Thanks, ' . $booking['customer_name'],
+            subject: 'We have your appointment request',
+            heading: 'Thanks, ' . $appointment['customer_name'],
             paragraphs: [
                 'We have received your request and will confirm it shortly. Nothing is booked until you hear from us.',
-                self::details($booking),
+                self::details($appointment),
             ],
         );
     }
@@ -30,14 +30,14 @@ class BookingMail
     /**
      * @return array{subject: string, html: string}
      */
-    public static function confirmed(array $booking, string $siteName, string $icsUrl, string $googleUrl): array
+    public static function confirmed(array $appointment, string $siteName, string $icsUrl, string $googleUrl): array
     {
         return self::compose(
             siteName: $siteName,
-            subject: 'Your booking is confirmed',
-            heading: 'You are booked in, ' . $booking['customer_name'],
+            subject: 'Your appointment is confirmed',
+            heading: 'You are booked in, ' . $appointment['customer_name'],
             paragraphs: [
-                self::details($booking),
+                self::details($appointment),
                 '<p>Add it to your calendar: <a href="' . self::e($googleUrl) . '">Google Calendar</a> or <a href="' . self::e($icsUrl) . '">any other calendar (.ics file)</a>.</p>',
                 'If you need to change or cancel, just reply to this email.',
             ],
@@ -47,14 +47,14 @@ class BookingMail
     /**
      * @return array{subject: string, html: string}
      */
-    public static function changed(array $booking, string $siteName, string $icsUrl, string $googleUrl): array
+    public static function changed(array $appointment, string $siteName, string $icsUrl, string $googleUrl): array
     {
         return self::compose(
             siteName: $siteName,
-            subject: 'Your booking has changed',
-            heading: 'Your booking has been updated',
+            subject: 'Your appointment has changed',
+            heading: 'Your appointment has been updated',
             paragraphs: [
-                self::details($booking),
+                self::details($appointment),
                 '<p>Please update your calendar: <a href="' . self::e($googleUrl) . '">Google Calendar</a> or <a href="' . self::e($icsUrl) . '">any other calendar (.ics file)</a>. Remove the earlier entry if your calendar keeps both.</p>',
                 'If this does not suit you, just reply to this email.',
             ],
@@ -64,15 +64,15 @@ class BookingMail
     /**
      * @return array{subject: string, html: string}
      */
-    public static function declined(array $booking, string $siteName): array
+    public static function declined(array $appointment, string $siteName): array
     {
         return self::compose(
             siteName: $siteName,
-            subject: 'About your booking request',
-            heading: 'Sorry, ' . $booking['customer_name'],
+            subject: 'About your appointment request',
+            heading: 'Sorry, ' . $appointment['customer_name'],
             paragraphs: [
-                'We are not able to take this booking:',
-                self::details($booking),
+                'We are not able to take this appointment:',
+                self::details($appointment),
                 'Please reply to this email or send a new request for another time.',
             ],
         );
@@ -81,14 +81,14 @@ class BookingMail
     /**
      * @return array{subject: string, html: string}
      */
-    public static function cancelled(array $booking, string $siteName): array
+    public static function cancelled(array $appointment, string $siteName): array
     {
         return self::compose(
             siteName: $siteName,
-            subject: 'Your booking is cancelled',
-            heading: 'Your booking is cancelled',
+            subject: 'Your appointment is cancelled',
+            heading: 'Your appointment is cancelled',
             paragraphs: [
-                self::details($booking),
+                self::details($appointment),
                 'If you did not expect this, or would like another time, please reply to this email.',
             ],
         );
@@ -99,18 +99,18 @@ class BookingMail
      *
      * @return array{subject: string, html: string}
      */
-    public static function requestForTeam(array $booking, string $siteName, string $adminUrl): array
+    public static function requestForTeam(array $appointment, string $siteName, string $adminUrl): array
     {
-        $contact = self::e((string) $booking['customer_name']) . ', ' . self::e((string) $booking['customer_email'])
-            . ($booking['customer_phone'] ? ', ' . self::e((string) $booking['customer_phone']) : '');
-        $notes = !empty($booking['customer_notes']) ? '<p><strong>Their message:</strong><br>' . \nl2br(self::e((string) $booking['customer_notes'])) . '</p>' : '';
+        $contact = self::e((string) $appointment['customer_name']) . ', ' . self::e((string) $appointment['customer_email'])
+            . ($appointment['customer_phone'] ? ', ' . self::e((string) $appointment['customer_phone']) : '');
+        $notes = !empty($appointment['customer_notes']) ? '<p><strong>Their message:</strong><br>' . \nl2br(self::e((string) $appointment['customer_notes'])) . '</p>' : '';
 
         return self::compose(
             siteName: $siteName,
-            subject: 'New booking request from ' . $booking['customer_name'],
-            heading: 'New booking request',
+            subject: 'New appointment request from ' . $appointment['customer_name'],
+            heading: 'New appointment request',
             paragraphs: [
-                self::details($booking),
+                self::details($appointment),
                 '<p><strong>From:</strong> ' . $contact . '</p>' . $notes,
                 '<p><a href="' . self::e($adminUrl) . '">Confirm or decline it in the admin</a></p>',
             ],
@@ -118,29 +118,29 @@ class BookingMail
     }
 
     /** The one-line summary used as a calendar event's title */
-    public static function eventTitle(array $booking, string $siteName): string
+    public static function eventTitle(array $appointment, string $siteName): string
     {
-        return $booking['type_name'] . ' at ' . $siteName;
+        return $appointment['type_name'] . ' at ' . $siteName;
     }
 
     /** "Friday 6 November 2026, 14:30 to 15:30" */
-    public static function when(array $booking): string
+    public static function when(array $appointment): string
     {
-        $start = new \DateTimeImmutable($booking['starts_at']);
-        $end = new \DateTimeImmutable($booking['ends_at']);
+        $start = new \DateTimeImmutable($appointment['starts_at']);
+        $end = new \DateTimeImmutable($appointment['ends_at']);
 
         return $start->format('l j F Y, H:i') . ' to ' . $end->format('H:i');
     }
 
-    private static function details(array $booking): string
+    private static function details(array $appointment): string
     {
         $rows = [
-            'What' => (string) $booking['type_name'],
-            'When' => self::when($booking),
-            'Reference' => (string) $booking['reference'],
+            'What' => (string) $appointment['type_name'],
+            'When' => self::when($appointment),
+            'Reference' => (string) $appointment['reference'],
         ];
-        $hasResource = !empty($booking['resource_name']);
-        if ($hasResource) $rows = ['What' => $rows['What'], 'With' => (string) $booking['resource_name']] + $rows;
+        $hasResource = !empty($appointment['resource_name']);
+        if ($hasResource) $rows = ['What' => $rows['What'], 'With' => (string) $appointment['resource_name']] + $rows;
 
         $html = '<table cellpadding="4" style="border-collapse:collapse">';
         foreach ($rows as $label => $value) {

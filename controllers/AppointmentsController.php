@@ -2,25 +2,25 @@
 
 declare(strict_types=1);
 
-namespace Osmium\Services\OsmiumBookings\Controllers;
+namespace Osmium\Services\OsmiumAppointments\Controllers;
 
 use Osmium\Modules\Admin\Core\AdminController;
-use Osmium\Services\OsmiumBookings\Models\Booking;
-use Osmium\Services\OsmiumBookings\Models\BookingConfig;
-use Osmium\Services\OsmiumBookings\Models\BookingNotifier;
-use Osmium\Services\OsmiumBookings\Models\BookingResource;
-use Osmium\Services\OsmiumBookings\Models\BookingType;
+use Osmium\Services\OsmiumAppointments\Models\Appointment;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentNotifier;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentResource;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentType;
 
 /**
- * Bookings controller - the requests, what can be booked, who or what is booked, and the opening-hours settings.
+ * Appointments controller - the requests, what can be booked, who or what is booked, and the opening-hours settings.
  *
  * Routes:
- *   - index()  → /admin/bookings/
- *   - action() → /admin/bookings/action/   (AJAX)
+ *   - index()  → /admin/appointments/
+ *   - action() → /admin/appointments/action/   (AJAX)
  */
-class BookingsController extends AdminController
+class AppointmentsController extends AdminController
 {
-    private const RECORD_TYPE = 'booking';
+    private const RECORD_TYPE = 'appointment';
 
     // =========================================================================
     // Public Actions
@@ -29,22 +29,22 @@ class BookingsController extends AdminController
     public function index(): void
     {
         $db = $this->osmium->dataSource;
-        $bookings = new Booking($db);
+        $appointments = new Appointment($db);
 
         $this->data['admin']['isAdmin'] = $this->isAdmin();
-        $this->data['admin']['lists'] = require __DIR__ . '/../lists/bookings.php';
-        $this->data['admin']['bookings'] = \array_map($this->formatBooking(...), $bookings->listAll());
-        $this->data['admin']['deletedBookings'] = \array_map($this->formatDeleted(...), $bookings->listDeleted());
-        $this->data['admin']['types'] = \array_map($this->formatType(...), (new BookingType($db))->listAll());
-        $this->data['admin']['resources'] = \array_map($this->formatResource(...), (new BookingResource($db))->listAll());
+        $this->data['admin']['lists'] = require __DIR__ . '/../lists/appointments.php';
+        $this->data['admin']['appointments'] = \array_map($this->formatAppointment(...), $appointments->listAll());
+        $this->data['admin']['deletedAppointments'] = \array_map($this->formatDeleted(...), $appointments->listDeleted());
+        $this->data['admin']['types'] = \array_map($this->formatType(...), (new AppointmentType($db))->listAll());
+        $this->data['admin']['resources'] = \array_map($this->formatResource(...), (new AppointmentResource($db))->listAll());
         $companyHours = $this->osmium->config->company->openingHours ?? null;
-        $this->data['admin']['settings'] = BookingConfig::get(companyHours: $companyHours);
-        $this->data['admin']['companyHours'] = BookingConfig::hoursFor(companyHours: $companyHours, breaks: []);
+        $this->data['admin']['settings'] = AppointmentConfig::get(companyHours: $companyHours);
+        $this->data['admin']['companyHours'] = AppointmentConfig::hoursFor(companyHours: $companyHours, breaks: []);
         $this->data['admin']['settings']['notifyEmailsText'] = \implode("\n", $this->data['admin']['settings']['notifyEmails']);
-        $this->data['admin']['steps'] = BookingConfig::STEPS;
+        $this->data['admin']['steps'] = AppointmentConfig::STEPS;
         $this->data['admin']['days'] = [1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday', 4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday'];
 
-        $this->setView('bookings/index.phtml');
+        $this->setView('appointments/index.phtml');
     }
 
     public function action()
@@ -71,8 +71,8 @@ class BookingsController extends AdminController
                 'decline' => $this->decline($id),
                 'cancel' => $this->cancel($id),
                 'reschedule' => $this->reschedule(id: $id, input: $input),
-                'delete' => $this->deleteBooking($id),
-                'restore' => $this->restoreBooking($id),
+                'delete' => $this->deleteAppointment($id),
+                'restore' => $this->restoreAppointment($id),
                 'permanently_delete' => $this->permanentlyDelete($id),
                 'purge_deleted' => $this->purgeDeleted(),
                 'save_type' => $this->saveType($input),
@@ -90,60 +90,60 @@ class BookingsController extends AdminController
     }
 
     // =========================================================================
-    // Bookings
+    // Appointments
     // =========================================================================
 
     private function confirm(int $id): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'confirmed');
-        $this->refuseIfClash(model: $model, booking: $booking, resourceId: $booking['resource_id'] !== null ? (int) $booking['resource_id'] : null, startsAt: $booking['starts_at'], endsAt: $booking['ends_at']);
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'confirmed');
+        $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null, startsAt: $appointment['starts_at'], endsAt: $appointment['ends_at']);
 
-        $model->setStatus(id: $id, status: 'confirmed', sequence: (int) $booking['ics_sequence']);
-        $this->logChange(action: 'Confirmed', id: $id, name: $booking['customer_name']);
-        (new BookingNotifier($this->osmium))->confirmed($model->get($id));
+        $model->setStatus(id: $id, status: 'confirmed', sequence: (int) $appointment['ics_sequence']);
+        $this->logChange(action: 'Confirmed', id: $id, name: $appointment['customer_name']);
+        (new AppointmentNotifier($this->osmium))->confirmed($model->get($id));
 
         return ['success' => true, 'id' => $id];
     }
 
     private function decline(int $id): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'declined');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'declined');
 
-        $model->setStatus(id: $id, status: 'declined', sequence: (int) $booking['ics_sequence']);
-        $this->logChange(action: 'Declined', id: $id, name: $booking['customer_name']);
-        (new BookingNotifier($this->osmium))->declined($model->get($id));
+        $model->setStatus(id: $id, status: 'declined', sequence: (int) $appointment['ics_sequence']);
+        $this->logChange(action: 'Declined', id: $id, name: $appointment['customer_name']);
+        (new AppointmentNotifier($this->osmium))->declined($model->get($id));
 
         return ['success' => true, 'id' => $id];
     }
 
     private function cancel(int $id): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $this->findOpen(model: $model, id: $id, allowed: ['requested', 'confirmed'], verb: 'cancelled');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested', 'confirmed'], verb: 'cancelled');
 
-        $model->setStatus(id: $id, status: 'cancelled', sequence: (int) $booking['ics_sequence'] + 1);
-        $this->logChange(action: 'Cancelled', id: $id, name: $booking['customer_name']);
-        (new BookingNotifier($this->osmium))->cancelled($model->get($id));
+        $model->setStatus(id: $id, status: 'cancelled', sequence: (int) $appointment['ics_sequence'] + 1);
+        $this->logChange(action: 'Cancelled', id: $id, name: $appointment['customer_name']);
+        (new AppointmentNotifier($this->osmium))->cancelled($model->get($id));
 
         return ['success' => true, 'id' => $id];
     }
 
     private function reschedule(int $id, array $input): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $model->get($id);
-        $missing = $booking === null || $booking['deleted_at'] !== null;
-        if ($missing) throw new \InvalidArgumentException('Booking not found');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $model->get($id);
+        $missing = $appointment === null || $appointment['deleted_at'] !== null;
+        if ($missing) throw new \InvalidArgumentException('Appointment not found');
 
         $typeId = (int) ($input['type_id'] ?? 0);
-        $type = (new BookingType($this->osmium->dataSource))->get($typeId);
+        $type = (new AppointmentType($this->osmium->dataSource))->get($typeId);
         if ($type === null) throw new \InvalidArgumentException('Choose what is being booked');
 
         $resourceId = (int) ($input['resource_id'] ?? 0);
         $hasResource = $resourceId > 0;
-        $resourceMissing = $hasResource && (new BookingResource($this->osmium->dataSource))->get($resourceId) === null;
+        $resourceMissing = $hasResource && (new AppointmentResource($this->osmium->dataSource))->get($resourceId) === null;
         if ($resourceMissing) throw new \InvalidArgumentException('Choose who or what is booked');
 
         $start = \DateTimeImmutable::createFromFormat('!Y-m-d H:i', \trim((string) ($input['date'] ?? '')) . ' ' . \trim((string) ($input['time'] ?? '')));
@@ -154,43 +154,43 @@ class BookingsController extends AdminController
         $endsAt = $start->modify('+' . (int) $type['duration_minutes'] . ' minutes')->format('Y-m-d H:i:s');
         $resourceValue = $hasResource ? $resourceId : null;
 
-        $isConfirmed = $booking['status'] === 'confirmed';
-        if ($isConfirmed) $this->refuseIfClash(model: $model, booking: $booking, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt);
+        $isConfirmed = $appointment['status'] === 'confirmed';
+        if ($isConfirmed) $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt);
 
-        $timeChanged = $startsAt !== $booking['starts_at'] || $endsAt !== $booking['ends_at'] || $resourceValue !== ($booking['resource_id'] !== null ? (int) $booking['resource_id'] : null);
-        $sequence = (int) $booking['ics_sequence'] + ($isConfirmed && $timeChanged ? 1 : 0);
+        $timeChanged = $startsAt !== $appointment['starts_at'] || $endsAt !== $appointment['ends_at'] || $resourceValue !== ($appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null);
+        $sequence = (int) $appointment['ics_sequence'] + ($isConfirmed && $timeChanged ? 1 : 0);
         $notes = \trim((string) ($input['admin_notes'] ?? ''));
 
         $model->reschedule(id: $id, typeId: $typeId, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt, adminNotes: $notes !== '' ? $notes : null, sequence: $sequence);
-        $this->logChange(action: 'Updated', id: $id, name: $booking['customer_name']);
+        $this->logChange(action: 'Updated', id: $id, name: $appointment['customer_name']);
 
         $tellCustomer = $isConfirmed && $timeChanged;
-        if ($tellCustomer) (new BookingNotifier($this->osmium))->changed($model->get($id));
+        if ($tellCustomer) (new AppointmentNotifier($this->osmium))->changed($model->get($id));
 
         return ['success' => true, 'id' => $id];
     }
 
-    private function deleteBooking(int $id): array
+    private function deleteAppointment(int $id): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $model->get($id);
-        $missing = $booking === null || $booking['deleted_at'] !== null;
-        if ($missing) throw new \InvalidArgumentException('Booking not found');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $model->get($id);
+        $missing = $appointment === null || $appointment['deleted_at'] !== null;
+        if ($missing) throw new \InvalidArgumentException('Appointment not found');
 
         $model->softDelete($id);
-        $this->logChange(action: 'Deleted', id: $id, name: $booking['customer_name']);
+        $this->logChange(action: 'Deleted', id: $id, name: $appointment['customer_name']);
 
         return ['success' => true, 'id' => $id];
     }
 
-    private function restoreBooking(int $id): array
+    private function restoreAppointment(int $id): array
     {
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $model->get($id);
-        if (!$booking) throw new \InvalidArgumentException('Booking not found');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $model->get($id);
+        if (!$appointment) throw new \InvalidArgumentException('Appointment not found');
 
         $model->restore($id);
-        $this->logChange(action: 'Restored', id: $id, name: $booking['customer_name']);
+        $this->logChange(action: 'Restored', id: $id, name: $appointment['customer_name']);
 
         return ['success' => true, 'id' => $id];
     }
@@ -200,11 +200,11 @@ class BookingsController extends AdminController
         $notAdmin = !$this->isAdmin();
         if ($notAdmin) throw new \Exception('Unauthorized');
 
-        $model = new Booking($this->osmium->dataSource);
-        $booking = $model->get($id);
-        if (!$booking) throw new \InvalidArgumentException('Booking not found');
+        $model = new Appointment($this->osmium->dataSource);
+        $appointment = $model->get($id);
+        if (!$appointment) throw new \InvalidArgumentException('Appointment not found');
 
-        $this->logChange(action: 'Permanently deleted', id: $id, name: $booking['customer_name']);
+        $this->logChange(action: 'Permanently deleted', id: $id, name: $appointment['customer_name']);
         $model->hardDelete($id);
 
         return ['success' => true, 'id' => $id];
@@ -215,8 +215,8 @@ class BookingsController extends AdminController
         $notAdmin = !$this->isAdmin();
         if ($notAdmin) throw new \Exception('Unauthorized');
 
-        $count = (new Booking($this->osmium->dataSource))->purgeDeleted();
-        $this->admin->model->changelog->log(description: "Purged {$count} deleted booking(s)", recordType: self::RECORD_TYPE, recordId: 0);
+        $count = (new Appointment($this->osmium->dataSource))->purgeDeleted();
+        $this->admin->model->changelog->log(description: "Purged {$count} deleted appointment(s)", recordType: self::RECORD_TYPE, recordId: 0);
 
         return ['success' => true, 'count' => $count];
     }
@@ -224,25 +224,25 @@ class BookingsController extends AdminController
     /**
      * @param list<string> $allowed
      */
-    private function findOpen(Booking $model, int $id, array $allowed, string $verb): array
+    private function findOpen(Appointment $model, int $id, array $allowed, string $verb): array
     {
-        $booking = $model->get($id);
-        $missing = $booking === null || $booking['deleted_at'] !== null;
-        if ($missing) throw new \InvalidArgumentException('Booking not found');
+        $appointment = $model->get($id);
+        $missing = $appointment === null || $appointment['deleted_at'] !== null;
+        if ($missing) throw new \InvalidArgumentException('Appointment not found');
 
-        $wrongState = !\in_array($booking['status'], $allowed, true);
-        if ($wrongState) throw new \InvalidArgumentException('This booking is ' . $booking['status'] . ' and cannot be ' . $verb);
+        $wrongState = !\in_array($appointment['status'], $allowed, true);
+        if ($wrongState) throw new \InvalidArgumentException('This appointment is ' . $appointment['status'] . ' and cannot be ' . $verb);
 
-        return $booking;
+        return $appointment;
     }
 
-    private function refuseIfClash(Booking $model, array $booking, ?int $resourceId, string $startsAt, string $endsAt): void
+    private function refuseIfClash(Appointment $model, array $appointment, ?int $resourceId, string $startsAt, string $endsAt): void
     {
-        $clash = $model->findOverlap(excludeId: (int) $booking['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt);
+        $clash = $model->findOverlap(excludeId: (int) $appointment['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt);
         if ($clash === null) return;
 
         $when = (new \DateTimeImmutable($clash['starts_at']))->format('D j M, H:i') . ' to ' . (new \DateTimeImmutable($clash['ends_at']))->format('H:i');
-        throw new \InvalidArgumentException('That clashes with a confirmed booking for ' . $clash['customer_name'] . ' (' . $when . '). Change the time first.');
+        throw new \InvalidArgumentException('That clashes with a confirmed appointment for ' . $clash['customer_name'] . ' (' . $when . '). Change the time first.');
     }
 
     // =========================================================================
@@ -265,7 +265,7 @@ class BookingsController extends AdminController
         if ($tooLong) throw new \InvalidArgumentException('Description is limited to 255 characters and price to 50');
 
         $details = ['name' => $name, 'description' => $description, 'durationMinutes' => $minutes, 'priceText' => $price, 'enabled' => !empty($input['enabled']), 'sortOrder' => \max(0, (int) ($input['sort_order'] ?? 0))];
-        $model = new BookingType($this->osmium->dataSource);
+        $model = new AppointmentType($this->osmium->dataSource);
         $id = (int) ($input['id'] ?? 0);
 
         $isNew = $id === 0;
@@ -273,22 +273,22 @@ class BookingsController extends AdminController
 
         $savedId = $isNew ? $model->create($details) : $id;
         if (!$isNew) $model->update(id: $id, details: $details);
-        $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' booking type: ' . $name, recordType: 'booking_type', recordId: $savedId);
+        $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' appointment type: ' . $name, recordType: 'appointment_type', recordId: $savedId);
 
         return ['success' => true, 'id' => $savedId];
     }
 
     private function deleteType(int $id): array
     {
-        $model = new BookingType($this->osmium->dataSource);
+        $model = new AppointmentType($this->osmium->dataSource);
         $type = \array_values(\array_filter($model->listAll(), static fn(array $row): bool => (int) $row['id'] === $id))[0] ?? null;
         if ($type === null) throw new \InvalidArgumentException('Not found');
 
-        $inUse = (int) $type['booking_count'] > 0;
-        if ($inUse) throw new \InvalidArgumentException('Bookings use this, so it cannot be deleted. Turn it off instead.');
+        $inUse = (int) $type['appointment_count'] > 0;
+        if ($inUse) throw new \InvalidArgumentException('Appointments use this, so it cannot be deleted. Turn it off instead.');
 
         $model->delete($id);
-        $this->admin->model->changelog->log(description: 'Deleted booking type: ' . $type['name'], recordType: 'booking_type', recordId: $id);
+        $this->admin->model->changelog->log(description: 'Deleted appointment type: ' . $type['name'], recordType: 'appointment_type', recordId: $id);
 
         return ['success' => true, 'id' => $id];
     }
@@ -299,7 +299,7 @@ class BookingsController extends AdminController
         $nameBad = $name === '' || \mb_strlen($name) > 100;
         if ($nameBad) throw new \InvalidArgumentException('Name is required and limited to 100 characters');
 
-        $model = new BookingResource($this->osmium->dataSource);
+        $model = new AppointmentResource($this->osmium->dataSource);
         $id = (int) ($input['id'] ?? 0);
         $enabled = !empty($input['enabled']);
         $sortOrder = \max(0, (int) ($input['sort_order'] ?? 0));
@@ -309,22 +309,22 @@ class BookingsController extends AdminController
 
         $savedId = $isNew ? $model->create(name: $name, enabled: $enabled, sortOrder: $sortOrder) : $id;
         if (!$isNew) $model->update(id: $id, name: $name, enabled: $enabled, sortOrder: $sortOrder);
-        $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' booking resource: ' . $name, recordType: 'booking_resource', recordId: $savedId);
+        $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' appointment resource: ' . $name, recordType: 'appointment_resource', recordId: $savedId);
 
         return ['success' => true, 'id' => $savedId];
     }
 
     private function deleteResource(int $id): array
     {
-        $model = new BookingResource($this->osmium->dataSource);
+        $model = new AppointmentResource($this->osmium->dataSource);
         $resource = \array_values(\array_filter($model->listAll(), static fn(array $row): bool => (int) $row['id'] === $id))[0] ?? null;
         if ($resource === null) throw new \InvalidArgumentException('Not found');
 
-        $inUse = (int) $resource['booking_count'] > 0;
-        if ($inUse) throw new \InvalidArgumentException('Bookings use this, so it cannot be deleted. Turn it off instead.');
+        $inUse = (int) $resource['appointment_count'] > 0;
+        if ($inUse) throw new \InvalidArgumentException('Appointments use this, so it cannot be deleted. Turn it off instead.');
 
         $model->delete($id);
-        $this->admin->model->changelog->log(description: 'Deleted booking resource: ' . $resource['name'], recordType: 'booking_resource', recordId: $id);
+        $this->admin->model->changelog->log(description: 'Deleted appointment resource: ' . $resource['name'], recordType: 'appointment_resource', recordId: $id);
 
         return ['success' => true, 'id' => $id];
     }
@@ -344,7 +344,7 @@ class BookingsController extends AdminController
             ];
         }
 
-        BookingConfig::save([
+        AppointmentConfig::save([
             'windows' => $windows,
             'breaks' => $breaks,
             'stepMinutes' => $input['step_minutes'] ?? 0,
@@ -352,7 +352,7 @@ class BookingsController extends AdminController
             'maxDaysAhead' => $input['max_days_ahead'] ?? 0,
             'notifyEmails' => (string) ($input['notify_emails'] ?? ''),
         ]);
-        $this->admin->model->changelog->log(description: 'Updated booking settings', recordType: 'settings', recordId: 0);
+        $this->admin->model->changelog->log(description: 'Updated appointment settings', recordType: 'settings', recordId: 0);
 
         return ['success' => true];
     }
@@ -361,7 +361,7 @@ class BookingsController extends AdminController
     // Formatting
     // =========================================================================
 
-    private function formatBooking(array $row): array
+    private function formatAppointment(array $row): array
     {
         $start = new \DateTimeImmutable($row['starts_at']);
 
@@ -404,7 +404,7 @@ class BookingsController extends AdminController
             'priceText' => $row['price_text'] ?? '',
             'enabled' => (bool) $row['enabled'],
             'sortOrder' => (int) $row['sort_order'],
-            'bookingCount' => (int) $row['booking_count'],
+            'appointmentCount' => (int) $row['appointment_count'],
             'enabledBadge' => $row['enabled'] ? '<span class="badge bg-label-success">On</span>' : '<span class="badge bg-label-secondary">Off</span>',
         ];
     }
@@ -416,7 +416,7 @@ class BookingsController extends AdminController
             'name' => $row['name'],
             'enabled' => (bool) $row['enabled'],
             'sortOrder' => (int) $row['sort_order'],
-            'bookingCount' => (int) $row['booking_count'],
+            'appointmentCount' => (int) $row['appointment_count'],
             'enabledBadge' => $row['enabled'] ? '<span class="badge bg-label-success">On</span>' : '<span class="badge bg-label-secondary">Off</span>',
         ];
     }
