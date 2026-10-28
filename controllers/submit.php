@@ -4,6 +4,7 @@ use Osmium\Core\Library\ServiceHooks;
 use Osmium\Core\Library\ServiceLoader;
 use Osmium\Core\Models\ServiceModel;
 use Osmium\Services\OsmiumAppointments\Models\Appointment;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentAlternatives;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentNotifier;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentRequest;
@@ -69,15 +70,28 @@ try {
     $resourceUnavailable = $hasResource && ($resource === null || !$resource['enabled']);
     if ($resourceUnavailable) throw new \InvalidArgumentException('Please choose who you would like to book with');
 
+    $config = AppointmentConfig::get(companyHours: $this->osmium->config->company->openingHours ?? null);
+    $now = new \DateTimeImmutable('now');
     $slot = AppointmentRules::slot(
-        config: AppointmentConfig::get(companyHours: $this->osmium->config->company->openingHours ?? null),
+        config: $config,
         date: $request['date'],
         time: $request['time'],
         durationMinutes: (int) $type['duration_minutes'],
-        now: new \DateTimeImmutable('now'),
+        now: $now,
     );
 
     $appointments = new Appointment($this->osmium->dataSource);
+    $alternatives = new AppointmentAlternatives(appointments: $appointments, config: $config, now: $now);
+    $people = \array_values(\array_filter((new AppointmentResource($this->osmium->dataSource))->listAll(), static fn(array $row): bool => (bool) $row['enabled']));
+
+    $needsAssigning = !$hasResource && $people !== [];
+    $assigned = $needsAssigning ? $appointments->findFreeResource($people, $slot['startsAt'], $slot['endsAt']) : null;
+    if ($needsAssigning && $assigned !== null) $request['resourceId'] = (int) $assigned['id'];
+
+    $lane = $assigned ?? $resource;
+    $taken = $needsAssigning ? $assigned === null : !$alternatives->isFree($lane, $slot['startsAt'], $slot['endsAt']);
+    if ($taken) throw new \InvalidArgumentException($alternatives->message(chosen: $resource, people: $people, date: $request['date'], time: $request['time'], minutes: (int) $type['duration_minutes']));
+
     $isDuplicate = $appointments->isDuplicate(email: $request['email'], startsAt: $slot['startsAt'], typeId: $request['typeId']);
     if ($isDuplicate) throw new \InvalidArgumentException('You have already asked for that time. We will be in touch.');
 

@@ -52,6 +52,21 @@ class AppointmentRules
         return ['startsAt' => $start->format('Y-m-d H:i:s'), 'endsAt' => $end->format('Y-m-d H:i:s')];
     }
 
+    /**
+     * Whether an appointment would run into this person's daily break (break_start and break_end as H:i; none = never)
+     *
+     * @param array{break_start?: ?string, break_end?: ?string}|null $resource
+     */
+    public static function onBreak(?array $resource, string $startsAt, string $endsAt): bool
+    {
+        $breakStart = $resource['break_start'] ?? null;
+        $breakEnd = $resource['break_end'] ?? null;
+        $hasBreak = $breakStart !== null && $breakEnd !== null && $breakStart !== '' && $breakEnd !== '';
+        if (!$hasBreak) return false;
+
+        return \substr($startsAt, 11, 5) < $breakEnd && \substr($endsAt, 11, 5) > $breakStart;
+    }
+
     /** Two appointments overlap when each starts before the other ends; touching ends are fine */
     public static function overlaps(string $startA, string $endA, string $startB, string $endB): bool
     {

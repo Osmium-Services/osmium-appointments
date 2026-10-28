@@ -5,7 +5,7 @@ Appointment requests for any kind of business. A customer asks for a time, you c
 ## Setup (admin > Osmium Appointments)
 
 - **What can be booked**: name, length in minutes, optional price text (shown only, no payment).
-- **Who or what is booked**: optional people, rooms or equipment. Clashes are checked per one; with none, the business is one lane.
+- **Who or what is booked**: optional people, rooms or equipment, each with an optional daily break (a person's lunch; stagger them so the shop stays open). Clashes are checked per one. A "no preference" request is given to the first person who is free and not on break, spreading waiting requests across the team; with no people set up, the business is one lane. When the time asked for is taken the customer is told who else is free then and the nearest earlier and later times that would work that day.
 - **Appointment rules**: opening hours come from Company > Location and are the most that can be booked. For each weekday you can set a narrower bookable window (for example to keep the first and last half hour free) and an optional break (for example lunch). Also minimum notice, how far ahead, time step, and who is emailed.
 
 ## Theme

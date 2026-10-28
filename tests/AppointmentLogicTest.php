@@ -127,6 +127,18 @@ class AppointmentLogicTest extends TestCase
         AppointmentConfig::validate(['windows' => [1 => ['start' => '16:00', 'end' => '10:00']], 'stepMinutes' => 15, 'minNoticeHours' => 1, 'maxDaysAhead' => 30]);
     }
 
+    public function test_a_persons_break_blocks_overlapping_appointments_only(): void
+    {
+        $amy = ['break_start' => '12:00', 'break_end' => '13:00'];
+
+        $this->assertFalse(AppointmentRules::onBreak($amy, '2026-11-09 11:00:00', '2026-11-09 12:00:00'));
+        $this->assertFalse(AppointmentRules::onBreak($amy, '2026-11-09 13:00:00', '2026-11-09 14:00:00'));
+        $this->assertTrue(AppointmentRules::onBreak($amy, '2026-11-09 11:30:00', '2026-11-09 12:15:00'));
+        $this->assertTrue(AppointmentRules::onBreak($amy, '2026-11-09 12:30:00', '2026-11-09 13:30:00'));
+        $this->assertFalse(AppointmentRules::onBreak(['break_start' => null, 'break_end' => null], '2026-11-09 12:30:00', '2026-11-09 13:30:00'));
+        $this->assertFalse(AppointmentRules::onBreak(null, '2026-11-09 12:30:00', '2026-11-09 13:30:00'));
+    }
+
     public function test_a_break_must_start_before_it_ends(): void
     {
         $this->expectException(\InvalidArgumentException::class);

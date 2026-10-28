@@ -86,6 +86,8 @@
         byId('resourceId').value = isEdit ? resource.id : '';
         byId('resourceName').value = isEdit ? resource.name : '';
         byId('resourceOrder').value = isEdit ? resource.sortOrder : 0;
+        byId('resourceBreakStart').value = isEdit ? resource.breakStart : '';
+        byId('resourceBreakEnd').value = isEdit ? resource.breakEnd : '';
         byId('resourceEnabled').checked = isEdit ? resource.enabled : true;
         openModal('resourceModal');
     }
@@ -150,6 +152,8 @@
                 id: byId('resourceId').value,
                 name: byId('resourceName').value,
                 sort_order: byId('resourceOrder').value,
+                break_start: byId('resourceBreakStart').value,
+                break_end: byId('resourceBreakEnd').value,
                 enabled: byId('resourceEnabled').checked
             });
         });

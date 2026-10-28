@@ -113,12 +113,13 @@ return [
         'title' => 'Who or what is booked',
         'noun' => ['one', 'ones'],
         'endpoint' => 'appointments/action/',
-        'subtitle' => 'Optional: people, rooms or equipment. With none, customers simply book the business.',
+        'subtitle' => 'Optional: people, rooms or equipment, each with an optional daily break (a lunch). With none, customers simply book the business.',
         'emptyText' => 'None - appointments are for the business as a whole.',
         'headerButton' => ['label' => 'Add', 'icon' => 'bx-plus', 'class' => 'btn-primary btn-sm', 'event' => 'add-resource'],
         'order' => null,
         'columns' => [
             ['key' => 'name', 'label' => 'Name', 'type' => 'text', 'strong' => true, 'fill' => true],
+            ['key' => 'breakText', 'label' => 'Break', 'type' => 'text', 'nowrap' => true],
             ['key' => 'enabledBadge', 'label' => 'On', 'type' => 'raw', 'nowrap' => true],
         ],
         'actions' => [

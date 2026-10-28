@@ -193,7 +193,7 @@ class AppointmentConfig
     }
 
     /** A start/end pair from the form: null when both are empty, otherwise both must be times with the end later */
-    private static function validPair(mixed $row, string $message): ?array
+    public static function validPair(mixed $row, string $message): ?array
     {
         $start = (string) ($row['start'] ?? '');
         $end = (string) ($row['end'] ?? '');

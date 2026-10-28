@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Services\OsmiumAppointments;
 
 use Osmium\Services\OsmiumAppointments\Models\Appointment;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentAlternatives;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentResource;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentType;
 use Osmium\Services\OsmiumAppointments\Models\Appointments;
@@ -14,6 +16,7 @@ require_once __DIR__ . '/../models/AppointmentConfig.php';
 require_once __DIR__ . '/../models/AppointmentType.php';
 require_once __DIR__ . '/../models/AppointmentResource.php';
 require_once __DIR__ . '/../models/Appointment.php';
+require_once __DIR__ . '/../models/AppointmentAlternatives.php';
 require_once __DIR__ . '/../models/Appointments.php';
 
 /**
@@ -85,6 +88,74 @@ class AppointmentsDbTest extends DatabaseTestCase
         $appointments->setStatus(id: $confirmed['id'], status: 'confirmed', sequence: 0);
 
         $this->assertNotNull($appointments->findOverlap(excludeId: 0, resourceId: null, startsAt: '2026-11-05 14:30:00', endsAt: '2026-11-05 15:30:00'));
+    }
+
+    public function test_no_preference_picks_the_first_person_who_is_free_and_not_on_break(): void
+    {
+        $appointments = new Appointment($this->db);
+        $people = new AppointmentResource($this->db);
+        $typeId = $this->type();
+        $amy = $people->create(name: 'zzAmy', enabled: true, sortOrder: 1, breakStart: '12:00', breakEnd: '13:00');
+        $ben = $people->create(name: 'zzBen', enabled: true, sortOrder: 2, breakStart: '13:00', breakEnd: '14:00');
+        $list = [$people->get($amy), $people->get($ben)];
+
+        $this->assertSame($amy, (int) $appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00')['id']);
+        $this->assertSame($ben, (int) $appointments->findFreeResource($list, '2026-11-09 12:00:00', '2026-11-09 13:00:00')['id']);
+        $this->assertSame($amy, (int) $appointments->findFreeResource($list, '2026-11-09 13:00:00', '2026-11-09 14:00:00')['id']);
+
+        $busy = $appointments->create($this->request($typeId, $amy), '2026-11-09 10:00:00', '2026-11-09 11:00:00');
+        $appointments->setStatus(id: $busy['id'], status: 'confirmed', sequence: 0);
+        $this->assertSame($ben, (int) $appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00')['id']);
+
+        $other = $appointments->create($this->request($typeId, $ben, 'x@example.com'), '2026-11-09 10:00:00', '2026-11-09 11:00:00');
+        $appointments->setStatus(id: $other['id'], status: 'confirmed', sequence: 0);
+        $this->assertNull($appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00'));
+        $this->assertNull($appointments->findFreeResource($list, '2026-11-09 12:30:00', '2026-11-09 13:30:00'));
+    }
+
+    public function test_no_preference_spreads_waiting_requests_across_the_team(): void
+    {
+        $appointments = new Appointment($this->db);
+        $people = new AppointmentResource($this->db);
+        $typeId = $this->type();
+        $amy = $people->create(name: 'zzAmy', enabled: true, sortOrder: 1);
+        $ben = $people->create(name: 'zzBen', enabled: true, sortOrder: 2);
+        $list = [$people->get($amy), $people->get($ben)];
+
+        $appointments->create($this->request($typeId, $amy), '2026-11-09 10:00:00', '2026-11-09 11:00:00');
+
+        $this->assertSame($ben, (int) $appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00')['id']);
+
+        $appointments->create($this->request($typeId, $ben, 'x@example.com'), '2026-11-09 10:00:00', '2026-11-09 11:00:00');
+
+        $this->assertSame($amy, (int) $appointments->findFreeResource($list, '2026-11-09 10:00:00', '2026-11-09 11:00:00')['id']);
+    }
+
+    public function test_a_refusal_suggests_someone_else_and_nearby_times(): void
+    {
+        $appointments = new Appointment($this->db);
+        $people = new AppointmentResource($this->db);
+        $typeId = $this->type();
+        $amy = $people->create(name: 'zzAmy', enabled: true, sortOrder: 1, breakStart: '12:00', breakEnd: '13:00');
+        $ben = $people->create(name: 'zzBen', enabled: true, sortOrder: 2);
+        $list = [$people->get($amy), $people->get($ben)];
+
+        $day = ['open' => '09:00', 'close' => '17:00', 'breakStart' => null, 'breakEnd' => null];
+        $config = AppointmentConfig::defaults() + ['hours' => [1 => $day, 2 => $day, 3 => $day, 4 => $day, 5 => $day, 6 => null, 7 => null]];
+        $alternatives = new AppointmentAlternatives($appointments, $config, new \DateTimeImmutable('2026-11-02 08:00'));
+
+        $text = $alternatives->message($list[0], $list, '2026-11-09', '12:15', 60);
+        $this->assertStringContainsString('zzAmy is not available at 12:15.', $text);
+        $this->assertStringContainsString('zzBen is free then.', $text);
+        $this->assertStringContainsString('zzAmy could do 11:00 or 13:00 that day.', $text);
+
+        $busy = $appointments->create($this->request($typeId, $ben), '2026-11-09 12:00:00', '2026-11-09 13:00:00');
+        $appointments->setStatus(id: $busy['id'], status: 'confirmed', sequence: 0);
+
+        $nobody = $alternatives->message(null, $list, '2026-11-09', '12:15', 60);
+        $this->assertStringContainsString('Nobody is free at 12:15.', $nobody);
+        $this->assertStringContainsString('We could do', $nobody);
+        $this->assertStringNotContainsString('is free then', $nobody);
     }
 
     public function test_the_bin_hides_a_appointment_until_it_is_restored(): void

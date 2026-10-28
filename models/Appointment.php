@@ -123,9 +123,32 @@ class Appointment extends Model
     }
 
     /** A confirmed appointment that clashes with this time for the same person (or with no person), other than the appointment itself */
-    public function findOverlap(int $excludeId, ?int $resourceId, string $startsAt, string $endsAt): ?array
+    /**
+     * Who to give a "no preference" request: the first person who is not on their break and has nothing confirmed at
+     * that time, preferring one with no other request waiting for it either so the work spreads across the team
+     *
+     * @param list<array<string, mixed>> $resources enabled people, in the order to try them
+     */
+    public function findFreeResource(array $resources, string $startsAt, string $endsAt): ?array
     {
-        $this->database->query($this->loadSqlFile('appointment-overlapping.sql'));
+        $available = [];
+        foreach ($resources as $resource) {
+            $onBreak = AppointmentRules::onBreak($resource, $startsAt, $endsAt);
+            $confirmed = $onBreak ? true : $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt) !== null;
+            if (!$confirmed) $available[] = $resource;
+        }
+
+        foreach ($available as $resource) {
+            $waiting = $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt, includeRequested: true);
+            if ($waiting === null) return $resource;
+        }
+
+        return $available[0] ?? null;
+    }
+
+    public function findOverlap(int $excludeId, ?int $resourceId, string $startsAt, string $endsAt, bool $includeRequested = false): ?array
+    {
+        $this->database->query($this->loadSqlFile($includeRequested ? 'appointment-overlapping-pending.sql' : 'appointment-overlapping.sql'));
         $this->database->bind(param: ':id', value: $excludeId);
         $this->database->bind(param: ':no_resource', value: $resourceId === null ? 1 : 0);
         $this->database->bind(param: ':resource_id', value: $resourceId);

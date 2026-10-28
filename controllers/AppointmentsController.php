@@ -9,6 +9,7 @@ use Osmium\Services\OsmiumAppointments\Models\Appointment;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentNotifier;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentResource;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentRules;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentType;
 
 /**
@@ -238,6 +239,10 @@ class AppointmentsController extends AdminController
 
     private function refuseIfClash(Appointment $model, array $appointment, ?int $resourceId, string $startsAt, string $endsAt): void
     {
+        $person = $resourceId !== null ? (new AppointmentResource($this->osmium->dataSource))->get($resourceId) : null;
+        $onBreak = AppointmentRules::onBreak($person, $startsAt, $endsAt);
+        if ($onBreak) throw new \InvalidArgumentException($person['name'] . ' is on their break then (' . $person['break_start'] . ' to ' . $person['break_end'] . '). Change the time or person first.');
+
         $clash = $model->findOverlap(excludeId: (int) $appointment['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt);
         if ($clash === null) return;
 
@@ -299,6 +304,7 @@ class AppointmentsController extends AdminController
         $nameBad = $name === '' || \mb_strlen($name) > 100;
         if ($nameBad) throw new \InvalidArgumentException('Name is required and limited to 100 characters');
 
+        $break = AppointmentConfig::validPair(row: ['start' => (string) ($input['break_start'] ?? ''), 'end' => (string) ($input['break_end'] ?? '')], message: 'A break needs a start time earlier than its end time');
         $model = new AppointmentResource($this->osmium->dataSource);
         $id = (int) ($input['id'] ?? 0);
         $enabled = !empty($input['enabled']);
@@ -307,8 +313,8 @@ class AppointmentsController extends AdminController
         $isNew = $id === 0;
         if (!$isNew && $model->get($id) === null) throw new \InvalidArgumentException('Not found');
 
-        $savedId = $isNew ? $model->create(name: $name, enabled: $enabled, sortOrder: $sortOrder) : $id;
-        if (!$isNew) $model->update(id: $id, name: $name, enabled: $enabled, sortOrder: $sortOrder);
+        $savedId = $isNew ? $model->create(name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null) : $id;
+        if (!$isNew) $model->update(id: $id, name: $name, enabled: $enabled, sortOrder: $sortOrder, breakStart: $break['start'] ?? null, breakEnd: $break['end'] ?? null);
         $this->admin->model->changelog->log(description: ($isNew ? 'Created' : 'Updated') . ' appointment resource: ' . $name, recordType: 'appointment_resource', recordId: $savedId);
 
         return ['success' => true, 'id' => $savedId];
@@ -416,6 +422,9 @@ class AppointmentsController extends AdminController
             'name' => $row['name'],
             'enabled' => (bool) $row['enabled'],
             'sortOrder' => (int) $row['sort_order'],
+            'breakStart' => $row['break_start'] ?? '',
+            'breakEnd' => $row['break_end'] ?? '',
+            'breakText' => ($row['break_start'] ?? '') !== '' ? $row['break_start'] . ' to ' . $row['break_end'] : '',
             'appointmentCount' => (int) $row['appointment_count'],
             'enabledBadge' => $row['enabled'] ? '<span class="badge bg-label-success">On</span>' : '<span class="badge bg-label-secondary">Off</span>',
         ];
