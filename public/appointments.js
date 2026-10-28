@@ -187,6 +187,7 @@
         byId('typeName').value = isEdit ? type.name : '';
         byId('typeDescription').value = isEdit ? type.description : '';
         byId('typeMinutes').value = isEdit ? type.minutes : 60;
+        byId('typeClean').value = isEdit ? type.cleanMinutes : 0;
         byId('typePrice').value = isEdit ? type.priceText : '';
         byId('typeOrder').value = isEdit ? type.sortOrder : 0;
         byId('typeEnabled').checked = isEdit ? type.enabled : true;
@@ -546,6 +547,12 @@
                 block.appendChild(el('small')).textContent = item.typeName;
                 block.addEventListener('click', function () { openAppointment(item); });
                 lane.appendChild(block);
+                if (item.cleanMinutes > 0) {
+                    lane.appendChild(el('div', 'sched-shade sched-clean', {
+                        top: (toMinutes(item.endTime) - origin) * PX_PER_MINUTE + 'px',
+                        height: item.cleanMinutes * PX_PER_MINUTE + 'px'
+                    })).title = 'Clean-up';
+                }
             });
 
             table.appendChild(lane);
@@ -669,6 +676,7 @@
                 name: byId('typeName').value,
                 description: byId('typeDescription').value,
                 duration_minutes: byId('typeMinutes').value,
+                clean_minutes: byId('typeClean').value,
                 price_text: byId('typePrice').value,
                 sort_order: byId('typeOrder').value,
                 enabled: byId('typeEnabled').checked

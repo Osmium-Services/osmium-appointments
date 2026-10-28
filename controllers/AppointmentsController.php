@@ -128,7 +128,7 @@ class AppointmentsController extends AdminController
     {
         $model = new Appointment($this->osmium->dataSource);
         $appointment = $this->findOpen(model: $model, id: $id, allowed: ['requested'], verb: 'confirmed');
-        $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null, startsAt: $appointment['starts_at'], endsAt: $appointment['ends_at']);
+        $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $appointment['resource_id'] !== null ? (int) $appointment['resource_id'] : null, startsAt: $appointment['starts_at'], endsAt: $appointment['ends_at'], cleanMinutes: (int) ($appointment['clean_minutes'] ?? 0));
 
         $model->setStatus(id: $id, status: 'confirmed', sequence: (int) $appointment['ics_sequence']);
         $this->logChange(action: 'Confirmed', id: $id, name: $appointment['customer_name']);
@@ -201,9 +201,9 @@ class AppointmentsController extends AdminController
         $alternatives = new AppointmentAlternatives(appointments: $model, config: $config, now: $now);
 
         $needsAssigning = $resource === null && $people !== [];
-        $assigned = $needsAssigning ? $model->findFreeResource($people, $slot['startsAt'], $slot['endsAt']) : $resource;
-        $taken = $needsAssigning ? $assigned === null : !$alternatives->isFree($assigned, $slot['startsAt'], $slot['endsAt']);
-        if ($taken) throw new \InvalidArgumentException($alternatives->message(chosen: $resource, people: $people, date: $date, time: $time, minutes: (int) $type['duration_minutes']));
+        $assigned = $needsAssigning ? $model->findFreeResource($people, $slot['startsAt'], $slot['endsAt'], (int) $type['clean_minutes']) : $resource;
+        $taken = $needsAssigning ? $assigned === null : !$alternatives->isFree($assigned, $slot['startsAt'], $slot['endsAt'], (int) $type['clean_minutes']);
+        if ($taken) throw new \InvalidArgumentException($alternatives->message(chosen: $resource, people: $people, date: $date, time: $time, minutes: (int) $type['duration_minutes'], cleanMinutes: (int) $type['clean_minutes']));
 
         $notes = \trim((string) ($input['notes'] ?? ''));
         $created = $model->create(
@@ -246,7 +246,7 @@ class AppointmentsController extends AdminController
         if ($timeChanged) $this->refuseOutsideOpeningHours(start: $start, minutes: (int) $type['duration_minutes']);
 
         $isConfirmed = $appointment['status'] === 'confirmed';
-        if ($isConfirmed) $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt);
+        if ($isConfirmed) $this->refuseIfClash(model: $model, appointment: $appointment, resourceId: $resourceValue, startsAt: $startsAt, endsAt: $endsAt, cleanMinutes: (int) $type['clean_minutes']);
 
         $sequence = (int) $appointment['ics_sequence'] + ($isConfirmed && $timeChanged ? 1 : 0);
         $notes = \trim((string) ($input['admin_notes'] ?? ''));
@@ -332,13 +332,13 @@ class AppointmentsController extends AdminController
         return $appointment;
     }
 
-    private function refuseIfClash(Appointment $model, array $appointment, ?int $resourceId, string $startsAt, string $endsAt): void
+    private function refuseIfClash(Appointment $model, array $appointment, ?int $resourceId, string $startsAt, string $endsAt, int $cleanMinutes = 0): void
     {
         $person = $resourceId !== null ? (new AppointmentResource($this->osmium->dataSource))->get($resourceId) : null;
         $reason = AppointmentRules::unavailableReason($person, $startsAt, $endsAt);
         if ($reason !== null) throw new \InvalidArgumentException($reason . '. Change the time or person first.');
 
-        $clash = $model->findOverlap(excludeId: (int) $appointment['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt);
+        $clash = $model->findOverlap(excludeId: (int) $appointment['id'], resourceId: $resourceId, startsAt: $startsAt, endsAt: $endsAt, cleanMinutes: $cleanMinutes);
         if ($clash === null) return;
 
         $when = (new \DateTimeImmutable($clash['starts_at']))->format('D j M, H:i') . ' to ' . (new \DateTimeImmutable($clash['ends_at']))->format('H:i');
@@ -359,12 +359,16 @@ class AppointmentsController extends AdminController
         $minutesBad = $minutes < 5 || $minutes > 720;
         if ($minutesBad) throw new \InvalidArgumentException('Length must be between 5 and 720 minutes');
 
+        $clean = (int) ($input['clean_minutes'] ?? 0);
+        $cleanBad = $clean < 0 || $clean > 240;
+        if ($cleanBad) throw new \InvalidArgumentException('Clean-up time must be between 0 and 240 minutes');
+
         $description = $this->nullIfEmpty((string) ($input['description'] ?? ''));
         $price = $this->nullIfEmpty((string) ($input['price_text'] ?? ''));
         $tooLong = \mb_strlen((string) $description) > 255 || \mb_strlen((string) $price) > 50;
         if ($tooLong) throw new \InvalidArgumentException('Description is limited to 255 characters and price to 50');
 
-        $details = ['name' => $name, 'description' => $description, 'durationMinutes' => $minutes, 'priceText' => $price, 'enabled' => !empty($input['enabled']), 'sortOrder' => \max(0, (int) ($input['sort_order'] ?? 0))];
+        $details = ['name' => $name, 'description' => $description, 'durationMinutes' => $minutes, 'cleanMinutes' => $clean, 'priceText' => $price, 'enabled' => !empty($input['enabled']), 'sortOrder' => \max(0, (int) ($input['sort_order'] ?? 0))];
         $model = new AppointmentType($this->osmium->dataSource);
         $id = (int) ($input['id'] ?? 0);
 
@@ -541,6 +545,7 @@ class AppointmentsController extends AdminController
             'customerEmail' => (string) $row['customer_email'],
             'customerPhone' => (string) ($row['customer_phone'] ?? ''),
             'endTime' => (new \DateTimeImmutable($row['ends_at']))->format('H:i'),
+            'cleanMinutes' => (int) ($row['clean_minutes'] ?? 0),
             'date' => $start->format('Y-m-d'),
             'time' => $start->format('H:i'),
             'customerNotes' => $row['customer_notes'] ?? '',
@@ -566,6 +571,7 @@ class AppointmentsController extends AdminController
             'name' => $row['name'],
             'description' => $row['description'] ?? '',
             'minutes' => (int) $row['duration_minutes'],
+            'cleanMinutes' => (int) ($row['clean_minutes'] ?? 0),
             'priceText' => $row['price_text'] ?? '',
             'enabled' => (bool) $row['enabled'],
             'sortOrder' => (int) $row['sort_order'],

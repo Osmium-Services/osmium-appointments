@@ -36,7 +36,7 @@ class AppointmentType extends Model
     }
 
     /**
-     * @param array{name: string, description: ?string, durationMinutes: int, priceText: ?string, enabled: bool, sortOrder: int} $details
+     * @param array{name: string, description: ?string, durationMinutes: int, cleanMinutes?: int, priceText: ?string, enabled: bool, sortOrder: int} $details
      */
     public function create(array $details): int
     {
@@ -48,7 +48,7 @@ class AppointmentType extends Model
     }
 
     /**
-     * @param array{name: string, description: ?string, durationMinutes: int, priceText: ?string, enabled: bool, sortOrder: int} $details
+     * @param array{name: string, description: ?string, durationMinutes: int, cleanMinutes?: int, priceText: ?string, enabled: bool, sortOrder: int} $details
      */
     public function update(int $id, array $details): void
     {
@@ -70,6 +70,7 @@ class AppointmentType extends Model
         $this->database->bind(param: ':name', value: $details['name']);
         $this->database->bind(param: ':description', value: $details['description']);
         $this->database->bind(param: ':duration_minutes', value: $details['durationMinutes']);
+        $this->database->bind(param: ':clean_minutes', value: $details['cleanMinutes'] ?? 0);
         $this->database->bind(param: ':price_text', value: $details['priceText']);
         $this->database->bind(param: ':enabled', value: $details['enabled'] ? 1 : 0);
         $this->database->bind(param: ':sort_order', value: $details['sortOrder']);

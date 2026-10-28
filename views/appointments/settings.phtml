@@ -96,11 +96,18 @@ $e = static fn(mixed $value): string => \htmlspecialchars((string) $value);
                         <textarea class="form-control" id="typeDescription" rows="2" maxlength="255"></textarea>
                     </div>
                     <div class="row">
-                        <div class="col-4 mb-3">
+                        <div class="col-6 mb-3">
                             <label class="form-label" for="typeMinutes">Minutes</label>
                             <input type="number" class="form-control" id="typeMinutes" min="5" max="720" value="60" required>
                         </div>
-                        <div class="col-4 mb-3">
+                        <div class="col-6 mb-3">
+                            <label class="form-label" for="typeClean">Clean-up after (minutes)</label>
+                            <input type="number" class="form-control" id="typeClean" min="0" max="240" value="0">
+                            <div class="form-text">Holds the person or booth after each one. Customers never see it.</div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-8 mb-3">
                             <label class="form-label" for="typePrice">Price (text)</label>
                             <input type="text" class="form-control" id="typePrice" maxlength="50" placeholder="e.g. From £25">
                         </div>

@@ -156,6 +156,32 @@ class AppointmentsDbTest extends DatabaseTestCase
         $this->assertTrue($alternatives->isFree($people[1], '2026-11-06 09:00:00', '2026-11-06 10:00:00'));
     }
 
+    public function test_the_clean_up_after_an_appointment_holds_the_booth_but_is_not_part_of_the_booking(): void
+    {
+        $resources = new AppointmentResource($this->db);
+        $appointments = new Appointment($this->db);
+        $booth = $resources->create(name: 'zzBooth 1', enabled: true, sortOrder: 1);
+        $sunbed = (new AppointmentType($this->db))->create(['name' => 'zzSunbed', 'description' => null, 'durationMinutes' => 20, 'cleanMinutes' => 10, 'priceText' => null, 'enabled' => true, 'sortOrder' => 0]);
+        $this->assertSame(10, (int) (new AppointmentType($this->db))->get($sunbed)['clean_minutes']);
+
+        $first = $appointments->create($this->request($sunbed, $booth), '2026-11-05 10:00:00', '2026-11-05 10:20:00');
+        $appointments->setStatus(id: $first['id'], status: 'confirmed', sequence: 0);
+        // What the customer sees is still the 20 minute session
+        $this->assertSame('2026-11-05 10:20:00', $appointments->get($first['id'])['ends_at']);
+
+        // 10:20 is inside the clean-up, 10:30 is clear (the new one's own clean-up is held after it, not before)
+        $this->assertNotNull($appointments->findOverlap(excludeId: 0, resourceId: $booth, startsAt: '2026-11-05 10:20:00', endsAt: '2026-11-05 10:40:00', cleanMinutes: 10));
+        $this->assertNotNull($appointments->findOverlap(excludeId: 0, resourceId: $booth, startsAt: '2026-11-05 10:29:00', endsAt: '2026-11-05 10:49:00', cleanMinutes: 10));
+        $this->assertNull($appointments->findOverlap(excludeId: 0, resourceId: $booth, startsAt: '2026-11-05 10:30:00', endsAt: '2026-11-05 10:50:00', cleanMinutes: 10));
+        // Before it, the new session's own clean-up must finish before 10:00: 09:30 to 09:50 plus 10 is exactly 10:00
+        $this->assertNull($appointments->findOverlap(excludeId: 0, resourceId: $booth, startsAt: '2026-11-05 09:30:00', endsAt: '2026-11-05 09:50:00', cleanMinutes: 10));
+        $this->assertNotNull($appointments->findOverlap(excludeId: 0, resourceId: $booth, startsAt: '2026-11-05 09:35:00', endsAt: '2026-11-05 09:55:00', cleanMinutes: 10));
+
+        $people = [$resources->get($booth)];
+        $this->assertNull($appointments->findFreeResource($people, '2026-11-05 10:20:00', '2026-11-05 10:40:00', 10));
+        $this->assertSame($booth, (int) $appointments->findFreeResource($people, '2026-11-05 10:30:00', '2026-11-05 10:50:00', 10)['id']);
+    }
+
     public function test_a_refusal_suggests_someone_else_and_nearby_times(): void
     {
         $appointments = new Appointment($this->db);

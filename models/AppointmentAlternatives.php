@@ -24,14 +24,14 @@ class AppointmentAlternatives
      *
      * @param array<string, mixed>|null $lane a person row, or null
      */
-    public function isFree(?array $lane, string $startsAt, string $endsAt): bool
+    public function isFree(?array $lane, string $startsAt, string $endsAt, int $cleanMinutes = 0): bool
     {
         $unavailable = AppointmentRules::unavailableReason($lane, $startsAt, $endsAt) !== null;
         if ($unavailable) return false;
 
         $laneId = $lane !== null ? (int) $lane['id'] : null;
 
-        return $this->appointments->findOverlap(excludeId: 0, resourceId: $laneId, startsAt: $startsAt, endsAt: $endsAt) === null;
+        return $this->appointments->findOverlap(excludeId: 0, resourceId: $laneId, startsAt: $startsAt, endsAt: $endsAt, cleanMinutes: $cleanMinutes) === null;
     }
 
     /**
@@ -40,7 +40,7 @@ class AppointmentAlternatives
      * @param array<string, mixed>|null $chosen the person asked for, null for no preference
      * @param list<array<string, mixed>> $people every enabled person
      */
-    public function message(?array $chosen, array $people, string $date, string $time, int $minutes): string
+    public function message(?array $chosen, array $people, string $date, string $time, int $minutes, int $cleanMinutes = 0): string
     {
         $start = new \DateTimeImmutable($date . ' ' . $time);
         $end = $start->modify("+{$minutes} minutes");
@@ -49,12 +49,12 @@ class AppointmentAlternatives
         $others = [];
         foreach ($people as $person) {
             $isChosen = $chosen !== null && (int) $person['id'] === (int) $chosen['id'];
-            $free = !$isChosen && $this->isFree($person, $start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s'));
+            $free = !$isChosen && $this->isFree($person, $start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s'), $cleanMinutes);
             if ($free) $others[] = (string) $person['name'];
         }
 
         $lanes = $chosen !== null ? [$chosen] : ($people !== [] ? $people : [null]);
-        $times = $this->nearestTimes(lanes: $lanes, date: $date, requested: $time, minutes: $minutes);
+        $times = $this->nearestTimes(lanes: $lanes, date: $date, requested: $time, minutes: $minutes, cleanMinutes: $cleanMinutes);
 
         $parts = [$opening];
         if ($others !== []) $parts[] = $this->join($others) . ($others === [$others[0]] ? ' is' : ' are') . ' free then.';
@@ -70,7 +70,7 @@ class AppointmentAlternatives
      * @param list<array<string, mixed>|null> $lanes
      * @return list<string> H:i, in time order
      */
-    private function nearestTimes(array $lanes, string $date, string $requested, int $minutes): array
+    private function nearestTimes(array $lanes, string $date, string $requested, int $minutes, int $cleanMinutes): array
     {
         $hours = $this->config['hours'][(int) (new \DateTimeImmutable($date))->format('N')] ?? null;
         if ($hours === null) return [];
@@ -82,7 +82,7 @@ class AppointmentAlternatives
             if ($at % $step !== 0 || $at === $wanted) continue;
 
             $time = \sprintf('%02d:%02d', \intdiv($at, 60), $at % 60);
-            if ($this->suits($lanes, $date, $time, $minutes)) $candidates[$at] = \abs($at - $wanted);
+            if ($this->suits($lanes, $date, $time, $minutes, $cleanMinutes)) $candidates[$at] = \abs($at - $wanted);
         }
 
         // The closest one either side of the time asked for; when only one side has any, the two closest on that side
@@ -101,7 +101,7 @@ class AppointmentAlternatives
     /**
      * @param list<array<string, mixed>|null> $lanes
      */
-    private function suits(array $lanes, string $date, string $time, int $minutes): bool
+    private function suits(array $lanes, string $date, string $time, int $minutes, int $cleanMinutes): bool
     {
         try {
             $slot = AppointmentRules::slot(config: $this->config, date: $date, time: $time, durationMinutes: $minutes, now: $this->now);
@@ -110,7 +110,7 @@ class AppointmentAlternatives
         }
 
         foreach ($lanes as $lane) {
-            if ($this->isFree($lane, $slot['startsAt'], $slot['endsAt'])) return true;
+            if ($this->isFree($lane, $slot['startsAt'], $slot['endsAt'], $cleanMinutes)) return true;
         }
 
         return false;

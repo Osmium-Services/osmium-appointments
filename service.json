@@ -1,7 +1,7 @@
 {
     "id": "osmium-appointments",
     "name": "Osmium Appointments",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Appointment requests the business confirms or declines: things to book, who or what is booked, opening hours, emails and calendar links, with hooks so a calendar service can follow along",
     "category": "business",
     "author": {

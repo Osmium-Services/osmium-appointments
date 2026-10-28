@@ -129,31 +129,36 @@ class Appointment extends Model
      *
      * @param list<array<string, mixed>> $resources enabled people, in the order to try them
      */
-    public function findFreeResource(array $resources, string $startsAt, string $endsAt): ?array
+    public function findFreeResource(array $resources, string $startsAt, string $endsAt, int $cleanMinutes = 0): ?array
     {
         $available = [];
         foreach ($resources as $resource) {
             $unavailable = AppointmentRules::unavailableReason($resource, $startsAt, $endsAt) !== null;
-            $confirmed = $unavailable ? true : $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt) !== null;
+            $confirmed = $unavailable ? true : $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt, cleanMinutes: $cleanMinutes) !== null;
             if (!$confirmed) $available[] = $resource;
         }
 
         foreach ($available as $resource) {
-            $waiting = $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt, includeRequested: true);
+            $waiting = $this->findOverlap(excludeId: 0, resourceId: (int) $resource['id'], startsAt: $startsAt, endsAt: $endsAt, includeRequested: true, cleanMinutes: $cleanMinutes);
             if ($waiting === null) return $resource;
         }
 
         return $available[0] ?? null;
     }
 
-    public function findOverlap(int $excludeId, ?int $resourceId, string $startsAt, string $endsAt, bool $includeRequested = false): ?array
+    /**
+     * @param int $cleanMinutes how long this appointment's person or booth is held after endsAt (the type's clean-up time); never shown to customers
+     */
+    public function findOverlap(int $excludeId, ?int $resourceId, string $startsAt, string $endsAt, bool $includeRequested = false, int $cleanMinutes = 0): ?array
     {
+        $heldUntil = $cleanMinutes > 0 ? (new \DateTimeImmutable($endsAt))->modify("+{$cleanMinutes} minutes")->format('Y-m-d H:i:s') : $endsAt;
+
         $this->database->query($this->loadSqlFile($includeRequested ? 'appointment-overlapping-pending.sql' : 'appointment-overlapping.sql'));
         $this->database->bind(param: ':id', value: $excludeId);
         $this->database->bind(param: ':no_resource', value: $resourceId === null ? 1 : 0);
         $this->database->bind(param: ':resource_id', value: $resourceId);
         $this->database->bind(param: ':starts_at', value: $startsAt);
-        $this->database->bind(param: ':ends_at', value: $endsAt);
+        $this->database->bind(param: ':ends_at', value: $heldUntil);
         $result = $this->database->single();
 
         return $result ?: null;
