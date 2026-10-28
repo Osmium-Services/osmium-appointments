@@ -1,6 +1,6 @@
 # Osmium Appointments
 
-Appointment requests for any kind of business. A customer asks for a time, you confirm or decline, and they are emailed each step. Appointments are stored locally; other services (for example a calendar sync) can react to the `appointment.*` hooks.
+Appointment requests for businesses that serve **one customer at a time per person or booth** for a set length of time: hairdressers, tanning salons, dentists, physios, driving instructors, vets. It is not for restaurants, classes or tours (shared capacity), or for hiring equipment or rooms over several days; those need their own services. A customer asks for a time, you confirm or decline, and they are emailed each step. Appointments are stored locally; other services (for example a calendar sync) can react to the `appointment.*` hooks.
 
 ## Day to day (admin > Appointments)
 
