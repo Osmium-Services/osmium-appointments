@@ -3,14 +3,8 @@
 use Osmium\Core\Library\ServiceHooks;
 use Osmium\Core\Library\ServiceLoader;
 use Osmium\Core\Models\ServiceModel;
-use Osmium\Services\OsmiumAppointments\Models\Appointment;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentAlternatives;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentConfig;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentNotifier;
+use Osmium\Services\OsmiumAppointments\Models\AppointmentDesk;
 use Osmium\Services\OsmiumAppointments\Models\AppointmentRequest;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentResource;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentRules;
-use Osmium\Services\OsmiumAppointments\Models\AppointmentType;
 use Osmium\Services\OsmiumAppointments\Models\Appointments;
 
 /**
@@ -61,42 +55,7 @@ if ($looksLikeABot) {
 try {
     $request = AppointmentRequest::parse($_POST);
 
-    $type = (new AppointmentType($this->osmium->dataSource))->get($request['typeId']);
-    $typeUnavailable = $type === null || !$type['enabled'];
-    if ($typeUnavailable) throw new \InvalidArgumentException('Please choose what you would like to book');
-
-    $hasResource = $request['resourceId'] !== null;
-    $resource = $hasResource ? (new AppointmentResource($this->osmium->dataSource))->get($request['resourceId']) : null;
-    $resourceUnavailable = $hasResource && ($resource === null || !$resource['enabled']);
-    if ($resourceUnavailable) throw new \InvalidArgumentException('Please choose who you would like to book with');
-
-    $config = AppointmentConfig::get(companyHours: $this->osmium->config->company->openingHours ?? null);
-    $now = new \DateTimeImmutable('now');
-    $slot = AppointmentRules::slot(
-        config: $config,
-        date: $request['date'],
-        time: $request['time'],
-        durationMinutes: (int) $type['duration_minutes'],
-        now: $now,
-    );
-
-    $appointments = new Appointment($this->osmium->dataSource);
-    $alternatives = new AppointmentAlternatives(appointments: $appointments, config: $config, now: $now);
-    $people = \array_values(\array_filter((new AppointmentResource($this->osmium->dataSource))->listAll(), static fn(array $row): bool => (bool) $row['enabled']));
-
-    $needsAssigning = !$hasResource && $people !== [];
-    $assigned = $needsAssigning ? $appointments->findFreeResource($people, $slot['startsAt'], $slot['endsAt'], (int) ($type['clean_minutes'] ?? 0)) : null;
-    if ($needsAssigning && $assigned !== null) $request['resourceId'] = (int) $assigned['id'];
-
-    $lane = $assigned ?? $resource;
-    $taken = $needsAssigning ? $assigned === null : !$alternatives->isFree($lane, $slot['startsAt'], $slot['endsAt'], (int) ($type['clean_minutes'] ?? 0));
-    if ($taken) throw new \InvalidArgumentException($alternatives->message(chosen: $resource, people: $people, date: $request['date'], time: $request['time'], minutes: (int) $type['duration_minutes'], cleanMinutes: (int) ($type['clean_minutes'] ?? 0)));
-
-    $isDuplicate = $appointments->isDuplicate(email: $request['email'], startsAt: $slot['startsAt'], typeId: $request['typeId']);
-    if ($isDuplicate) throw new \InvalidArgumentException('You have already asked for that time. We will be in touch.');
-
-    $created = $appointments->create(request: $request, startsAt: $slot['startsAt'], endsAt: $slot['endsAt']);
-    (new AppointmentNotifier($this->osmium))->requested($appointments->get($created['id']));
+    (new AppointmentDesk(osmium: $this->osmium))->acceptRequest($request);
 
     $notice('sent', 'Thanks, your request has been sent. We will confirm it by email.');
 } catch (\InvalidArgumentException $e) {

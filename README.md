@@ -22,6 +22,10 @@ $appointments->types(); $appointments->resources(); $appointments->rules(); $app
 
 POST the form to `/api/appointments` with `token`, honeypot `zip`, `type_id`, optional `resource_id`, `name`, `email`, optional `phone` and `notes`, `date` (Y-m-d) and `time` (H:i).
 
+## Developing
+
+Every action (website request, confirm, decline, cancel, phone booking, move) goes through `models/AppointmentDesk.php`, which the admin screen, the website form and the dev simulator all share. `tools/simulate.php` plays a busy two days of calls, website requests, answers, moves and cancellations on a dev site (`php app/services/osmium-appointments/tools/simulate.php --seed --every=2 --arrivals=24`). It sends real emails and must never be run on a live site.
+
 ## Hooks
 
 `appointment.requested`, `appointment.confirmed`, `appointment.changed`, `appointment.declined`, `appointment.cancelled`. Payload: `appointment`, `appointmentId`, `dataSource`, `osmium`. A service may store its own reference in the appointment's `external_refs`.
