@@ -93,6 +93,9 @@ class AppointmentsController extends AdminController
         $missingParams = !$action || ($needsId && !$id);
         if ($missingParams) $this->admin->jsonError('Missing parameters');
 
+        $adminOnly = \in_array($action, ['save_settings', 'save_type', 'delete_type', 'save_resource', 'delete_resource'], true);
+        if ($adminOnly && !$this->isAdmin()) $this->admin->jsonError('Unauthorized');
+
         try {
             $result = match ($action) {
                 'confirm' => $this->desk()->confirm($id),
